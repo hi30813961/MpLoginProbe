@@ -10,7 +10,7 @@
     微信会裁剪出一张新的 jpg 并持久化。
 
 链路（全 CDP，无感化，不占真实鼠标）：
-  1. 临时放大 CDP 视口到 1400x1000。探针窗口只有 1252x504，
+  1. 临时放大 CDP 视口到 1400x1400。探针窗口只有 1252x504，
      弹窗底栏按钮在 y≈677/848/956，不放大根本点不到。
   2. 正文：光标置末尾 → #js_editor_insertimage → 「从图片库选择」
      → 按 CDN 图片 ID 多选 → 「确定」，一次插入全部正文图。
@@ -39,7 +39,9 @@ import sources          # noqa: E402
 from cdp_vision import CdpError  # noqa: E402
 from deliver import ev, token_of, click_css, save_draft, FOCUS_BODY_JS  # noqa: E402
 
-VIEWPORT = {"width": 1400, "height": 1000, "deviceScaleFactor": 1, "mobile": False}
+# 视口高度必须大于图片选择弹窗底栏按钮的 y 坐标。素材库图片变多时弹窗会被撑高，
+# 1000 曾让「确定」落在 y≈1011 而点不到（表现为「图片选择弹窗未关闭超时」）。
+VIEWPORT = {"width": 1400, "height": 1400, "deviceScaleFactor": 1, "mobile": False}
 COVER_BTN = ".select-cover__btn.js_cover_btn_area"
 COVER_LIB = "a.js_imagedialog"
 IMG_BTN = "#js_editor_insertimage"
@@ -271,7 +273,8 @@ def inject(cfg, cdp, mid, *, appmsgid=None, current=False,
         cdp.cdp("Emulation.setDeviceMetricsOverride", VIEWPORT)
         overridden = True
         time.sleep(0.8)
-        result["steps"].append("临时放大 CDP 视口 1400x1000")
+        result["steps"].append("临时放大 CDP 视口 %dx%d"
+                              % (VIEWPORT["width"], VIEWPORT["height"]))
         if not ev(cdp, "!!document.querySelector('#ueditor_0 .ProseMirror')"):
             raise CdpError("当前页不是图文编辑器")
 

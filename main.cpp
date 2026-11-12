@@ -1,14 +1,22 @@
-// MpLoginProbe v4 — 公众号后台登录态 / 会话快照探针 + 本地 CDP 控制通道
+// MpLoginProbe v5 — 公众号后台登录态 / 会话快照探针 + 本地 CDP 控制通道
 //                   + 内置「本地素材库 · 流水线」管理台（第二个 WebView2）
 // Qt 6.5.3 MinGW + WebView2 COM，动态加载 WebView2Loader.dll（无需 MSVC / QtWebEngine）
 // 复用 office2pdf2winformcpp_qt6/src/ui/WebViewPanel.cpp 的初始化模式。
 // 只读探针：不重放私有接口、不做发布/删除/保存等写操作。
 //
-// v4 新增：主窗口用 QSplitter 左右并排放【两个互不干扰的 WebView2】
+// v5 新增：内嵌 CPython，右侧管理台服务与 Qt 同进程
+//   运行时来自随 exe 分发的 pyruntime/（python313.dll + 标准库 zip + DLLs），
+//   由本进程 LoadLibraryW 动态加载，独立 std::thread 里 Py_Initialize + 跑
+//   pipeline/_embedded_boot.py，不再 fork python.exe。换机无需安装 Python。
+//   _embedded_boot.py 把 ui_server.run_cli 改为「当前解释器内调用 pipeline.main」，
+//   因为内嵌后 sys.executable 是 MpLoginProbe.exe 自己，原子进程路径会去启动本程序。
+//   内嵌失败（缺 pyruntime / 初始化异常）自动回退 v4 的 QProcess 拉起外部 Python。
+//   退出靠文件哨兵 .py_stop：Python 侧 srv.shutdown() → Py_FinalizeEx() → join。
+//
+// v4：主窗口用 QSplitter 左右并排放【两个互不干扰的 WebView2】
 //   左：mp.weixin.qq.com（登录态 / CDP 8765 通道，始终可见，保持渲染）
 //   右：http://127.0.0.1:8766/（本地管理台，独立 MpAdminProfile，不共享登录 cookie）
-//   启动时会先探测 8766 端口：已有服务直接复用；否则用 QProcess 无黑框拉起
-//   python pipeline.py ui --port 8766，端口就绪后自动导航；退出时只回收自己拉起的进程。
+//   启动时会先探测 8766 端口：已有服务直接复用；端口就绪后自动导航。
 //   为什么不能用「同一个 WebView2 来回切页」：8765 的 CDP 注入、登录态、SPA 页面
 //   都绑定在左侧那个 WebView2 上，切走了 pipeline 的存草稿/改稿/补图会全部失灵。
 //
@@ -72,7 +80,11 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QHostAddress>
+#include <QThread>
 #include <functional>
+#include <thread>
+#include <atomic>
+#include <cstdio>
 
 struct Ctx {
     QWidget*        host   = nullptr;
@@ -112,10 +124,39 @@ struct AdminCtx {
     int       waitTicks  = 0;
     QStringList pyCandidates;
     int       pyIndex    = 0;
+    bool      embedFallbackTried = false;   // 内嵌失败只回退一次外部 Python
+    bool      embedded   = false;           // 当前 8766 由本进程内嵌 CPython 提供
 };
 static AdminCtx a;
 static const quint16 kAdminPort = 8766;
 static const wchar_t* kAdminUrl = L"http://127.0.0.1:8766/";
+
+// ── 内嵌 CPython（v5）──────────────────────────────────────────────
+// 0=未启动 1=初始化中 2=服务线程运行中 3=失败（可回退 QProcess） 4=已停止
+enum { EMB_IDLE = 0, EMB_STARTING = 1, EMB_RUNNING = 2, EMB_FAILED = 3, EMB_STOPPED = 4 };
+static std::atomic<int>  g_embedState{EMB_IDLE};
+static std::atomic<bool> g_embedDone{false};
+struct EmbedThread {
+    std::thread t;
+    // 静态对象析构时若还 joinable 会 std::terminate，这里兜底 detach
+    ~EmbedThread() { if (t.joinable()) t.detach(); }
+};
+static EmbedThread g_embedThread;
+
+static QString baseDir();   // 定义在下方，这里先声明
+
+static QString embedRoot()    { return baseDir() + QStringLiteral("/pyruntime"); }
+static QString embedBoot()    { return baseDir() + QStringLiteral("/pipeline/_embedded_boot.py"); }
+static QString embedStopFile(){ return baseDir() + QStringLiteral("/.py_stop"); }
+static QString embedLogFile() { return baseDir() + QStringLiteral("/embed.log"); }
+
+// 把路径写进环境变量，避免任何字符串转义/编码问题；Python 侧只认环境变量
+static void setWideEnv(const wchar_t* key, const QString& value)
+{
+    SetEnvironmentVariableW(key, reinterpret_cast<const wchar_t*>(value.utf16()));
+}
+static bool startEmbeddedAdmin();
+static void stopEmbeddedAdmin();
 
 struct Snapshot {
     bool    active   = false;
@@ -962,8 +1003,115 @@ static void waitAdminReady();
 
 static void adminNavigate()
 {
-    setAdminStatus(QStringLiteral("管理台已就绪 · http://127.0.0.1:8766/ · 仅本机可访问"));
+    setAdminStatus(a.embedded && !a.proc
+        ? QStringLiteral("管理台已就绪 · 内嵌 Python 单进程 · http://127.0.0.1:8766/ · 仅本机可访问")
+        : QStringLiteral("管理台已就绪 · http://127.0.0.1:8766/ · 仅本机可访问"));
     if (a.web) a.web->Navigate(kAdminUrl);
+}
+
+// ── 在 Qt 进程内启动 CPython，跑 pipeline/_embedded_boot.py ──────────
+// 用 LoadLibraryExW + GetProcAddress 而不是链接 python313.lib：
+//   python313.dll 是 MSVC 编译的，MinGW 直接链 .lib 有 ABI/导入库风险；
+//   Py_Initialize / PyRun_SimpleString / Py_FinalizeEx 都是纯 C 符号，
+//   只传 const char*，跨 CRT 安全（实测探针通过）。
+static bool startEmbeddedAdmin()
+{
+    const QString root = embedRoot();
+    const QString dll  = root + QStringLiteral("/python313.dll");
+    const QString boot = embedBoot();
+    if (!QFile::exists(dll) || !QFile::exists(boot)) {
+        logLine(QStringLiteral("[内嵌] 缺少 pyruntime/python313.dll 或 _embedded_boot.py，回退外部 Python"));
+        return false;
+    }
+    QFile::remove(embedStopFile());     // 清掉上次异常退出残留的哨兵
+
+    // 全部通过环境变量传给 Python，避免把 Windows 路径拼进源码字符串
+    setWideEnv(L"PYTHONHOME", root);
+    setWideEnv(L"PYTHONPATH", root + QStringLiteral("/python313.zip;")
+                            + root + QStringLiteral("/DLLs;")
+                            + baseDir() + QStringLiteral("/pipeline"));
+    setWideEnv(L"MP_ADMIN_PORT", QString::number(kAdminPort));
+    setWideEnv(L"MP_STOP_FILE",  embedStopFile());
+    setWideEnv(L"MP_BOOT_FILE",  boot);
+    setWideEnv(L"MP_EMBED_LOG",  embedLogFile());
+    setWideEnv(L"MP_CDP_URL",    QStringLiteral("http://127.0.0.1:8765"));
+    setWideEnv(L"PYTHONIOENCODING", QStringLiteral("utf-8"));
+
+    const std::wstring wdll = dll.toStdWString();
+    const QByteArray logPath = embedLogFile().toUtf8();
+    g_embedDone.store(false);
+    g_embedState.store(EMB_STARTING);
+
+    g_embedThread.t = std::thread([wdll, logPath]() {
+        auto wlog = [&logPath](const char* s) {
+            FILE* f = fopen(logPath.constData(), "a");
+            if (f) { fprintf(f, "%s\n", s); fclose(f); }
+        };
+        HMODULE h = LoadLibraryExW(wdll.c_str(), nullptr,
+                                   LOAD_WITH_ALTERED_SEARCH_PATH);
+        if (!h) {
+            wlog("[内嵌] FAIL LoadLibraryExW python313.dll");
+            g_embedState.store(EMB_FAILED);
+            g_embedDone.store(true);
+            return;
+        }
+        using FnInit = void(*)();
+        using FnRun  = int(*)(const char*);
+        using FnFin  = int(*)();
+        auto pInit = reinterpret_cast<FnInit>(GetProcAddress(h, "Py_Initialize"));
+        auto pRun  = reinterpret_cast<FnRun> (GetProcAddress(h, "PyRun_SimpleString"));
+        auto pFin  = reinterpret_cast<FnFin> (GetProcAddress(h, "Py_FinalizeEx"));
+        if (!pInit || !pRun || !pFin) {
+            wlog("[内嵌] FAIL CPython 符号缺失");
+            g_embedState.store(EMB_FAILED);
+            g_embedDone.store(true);
+            return;
+        }
+        // -mwindows 的 GUI 进程没有控制台，sys.stdout/stderr 可能是 None；
+        // 必须先把它们落到文件，否则 Python 侧任何 print 都会抛异常。
+        static const char* kBootstrap =
+            "import sys, os, io\n"
+            "_f = open(os.environ['MP_EMBED_LOG'], 'a', encoding='utf-8', buffering=1)\n"
+            "sys.stdout = _f\n"
+            "sys.stderr = _f\n"
+            "print('[内嵌] CPython 已初始化', sys.version.split()[0], flush=True)\n"
+            "import runpy\n"
+            "runpy.run_path(os.environ['MP_BOOT_FILE'], run_name='__main__')\n";
+        wlog("[内嵌] Py_Initialize ...");
+        pInit();
+        const int rc = pRun(kBootstrap);      // 内部 serve_forever()，阻塞到哨兵出现
+        wlog(rc == 0 ? "[内嵌] bootstrap 正常返回" : "[内嵌] bootstrap 异常返回");
+        if (pFin) pFin();
+        wlog("[内嵌] Py_FinalizeEx 完成");
+        g_embedState.store(rc == 0 ? EMB_STOPPED : EMB_FAILED);
+        g_embedDone.store(true);
+    });
+
+    a.embedded = true;
+    logLine(QStringLiteral("[内嵌] 已在本进程启动 CPython，等待 8766 就绪…"));
+    setAdminStatus(QStringLiteral("管理台：内嵌 Python 启动中…"));
+    a.waitTicks = 0;
+    QTimer::singleShot(400, qApp, waitAdminReady);
+    return true;
+}
+
+static void stopEmbeddedAdmin()
+{
+    const int st = g_embedState.load();
+    if (st == EMB_IDLE || st == EMB_STOPPED || !g_embedThread.t.joinable()) return;
+
+    QFile f(embedStopFile());
+    if (f.open(QIODevice::WriteOnly)) { f.write("stop"); f.close(); }
+    for (int i = 0; i < 25 && !g_embedDone.load(); ++i)
+        QThread::msleep(80);              // 最多等 2 秒
+    if (g_embedDone.load()) {
+        g_embedThread.t.join();
+        logLine(QStringLiteral("[内嵌] CPython 已优雅停止，端口已释放"));
+    } else {
+        g_embedThread.t.detach();
+        logLine(QStringLiteral("[内嵌] 停止超时，交给进程退出回收"));
+    }
+    g_embedState.store(EMB_STOPPED);
 }
 
 static QStringList pythonCandidates()
@@ -994,6 +1142,15 @@ static void startAdminProcess()
                       QStringLiteral("--port"), QString::number(kAdminPort) });
     p->setWorkingDirectory(baseDir() + QStringLiteral("/pipeline"));
     p->setProcessChannelMode(QProcess::MergedChannels);
+    // 内嵌模式给本进程设过 PYTHONHOME/PYTHONPATH（指向精简运行时），
+    // 回退到外部 Python 时必须剥离，否则外部解释器会被指错前缀而启动失败。
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove(QStringLiteral("PYTHONHOME"));
+    env.remove(QStringLiteral("PYTHONPATH"));
+    env.remove(QStringLiteral("MP_BOOT_FILE"));
+    env.remove(QStringLiteral("MP_STOP_FILE"));
+    env.remove(QStringLiteral("MP_EMBED_LOG"));
+    p->setProcessEnvironment(env);
     // 控制台黑框不弹出来（Qt 的 GUI 程序默认会给 console 子进程建窗口）
     p->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args) {
         args->flags |= CREATE_NO_WINDOW;
@@ -1024,7 +1181,22 @@ static void startAdminProcess()
 
 static void waitAdminReady()
 {
-    if (adminPortOpen()) { adminNavigate(); return; }
+    if (adminPortOpen()) {
+        if (a.embedded && !a.proc) {
+            logLine(QStringLiteral("[内嵌] 8766 已就绪 · 单进程模式（无 python.exe 子进程）"));
+        }
+        adminNavigate();
+        return;
+    }
+    // 内嵌线程异常退出 → 回收线程，只回退一次到 v4 的外部 Python
+    if (g_embedState.load() == EMB_FAILED && !a.embedFallbackTried && !a.proc) {
+        a.embedFallbackTried = true;
+        if (g_embedThread.t.joinable()) g_embedThread.t.join();
+        a.embedded = false;
+        logLine(QStringLiteral("[内嵌] 启动失败，回退外部 Python（详见 embed.log）"));
+        startAdminProcess();
+        return;
+    }
     // 当前候选秒退 → 换下一个 Python
     if (a.proc && a.proc->state() == QProcess::NotRunning && a.waitTicks >= 3) {
         a.proc->deleteLater();
@@ -1034,7 +1206,8 @@ static void waitAdminReady()
     }
     if (++a.waitTicks > 30) {
         setAdminStatus(QStringLiteral("服务启动超时，可手动运行 pipeline/start-ui.bat 后点「刷新」"));
-        logLine(QStringLiteral("[管理台] 等待 8766 超时"));
+        logLine(QStringLiteral("[管理台] 等待 8766 超时（内嵌=")
+                + QString::number(g_embedState.load()) + QStringLiteral("）"));
         return;
     }
     QTimer::singleShot(400, qApp, waitAdminReady);
@@ -1045,9 +1218,10 @@ static void ensureAdminService()
     if (!a.web) return;
     if (adminPortOpen()) {
         logLine(QStringLiteral("[管理台] 检测到 8766 已有服务，直接复用（不重复启动）"));
+        a.embedded = false;
         adminNavigate();
-    } else {
-        startAdminProcess();
+    } else if (!startEmbeddedAdmin()) {
+        startAdminProcess();       // pyruntime 缺失 / DLL 加载失败时的兼容路径
     }
 }
 
@@ -1181,7 +1355,7 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     QWidget window;
     window.setWindowTitle(QStringLiteral(
-        "公众号工作台 v4  |  左侧：公众号后台 / CDP 8765   右侧：本地素材库 · 流水线 8766"));
+        "公众号工作台 v5  |  左侧：公众号后台 / CDP 8765   右侧：本地素材库 · 流水线 8766（内嵌 Python 单进程）"));
     // 按屏幕可用区域自适应：窗口比屏幕高时底部按钮会被挤出屏幕，看不见也点不到
     const QRect avail = QApplication::primaryScreen()->availableGeometry();
     window.resize(qMin(1180, int(avail.width()  * 0.92)),
@@ -1190,7 +1364,8 @@ int main(int argc, char** argv)
 
     auto* root = new QVBoxLayout(&window);
     auto* head = new QLabel(QStringLiteral(
-        "左侧公众号后台只做只读旁观 + CDP 注入；右侧管理台只生成/保存草稿，不群发、不发表。两个 WebView2 互不干扰。"));
+        "左侧公众号后台只做只读旁观 + CDP 注入；右侧管理台只生成/保存草稿，不群发、不发表。"
+        "两个 WebView2 互不干扰；管理台由本进程内嵌的 CPython 提供，无需另装 Python。"));
     head->setStyleSheet(QStringLiteral("color:#555;padding:4px;"));
     root->addWidget(head);
 
@@ -1265,6 +1440,9 @@ int main(int argc, char** argv)
     timer->start(400);
 
     QObject::connect(&app, &QApplication::aboutToQuit, []() {
+        // v5：先让内嵌 CPython 优雅收尾（哨兵 → srv.shutdown → Py_FinalizeEx → join），
+        // 再关 WebView2；否则 daemon 线程会在 COM 释放后继续轮询 8765。
+        stopEmbeddedAdmin();
         if (g.web) {
             g.web->remove_NavigationCompleted(g.navTok);
             g.web->remove_SourceChanged(g.srcTok);
@@ -1273,7 +1451,7 @@ int main(int argc, char** argv)
         if (g.ctrl) { g.ctrl->Close(); g.ctrl->Release(); }
         if (g.web) g.web->Release();
         if (g.env) g.env->Release();
-        // 管理台：先关 WebView2，再回收「仅由本程序拉起」的 Python 服务进程
+        // 管理台：内嵌模式已在上面优雅停止；这里只回收「仅由本程序拉起」的外部 Python
         if (a.ctrl) { a.ctrl->Close(); a.ctrl->Release(); }
         if (a.web) a.web->Release();
         if (a.env) a.env->Release();
@@ -1287,7 +1465,7 @@ int main(int argc, char** argv)
     });
 
     writeStatus();
-    logLine(QStringLiteral("=== MpLoginProbe v4 启动（CDP 8765 + 内置管理台 8766） ==="));
+    logLine(QStringLiteral("=== MpLoginProbe v5 启动（CDP 8765 + 内嵌 Python 管理台 8766） ==="));
     startCdpHttp();
     window.showMaximized();   // 贴满可用区域：底部按钮行始终在屏幕内，便于人工/视觉点击
     QTimer::singleShot(200, &window, applyAdminSizes);

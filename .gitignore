@@ -42,3 +42,9 @@ networkinformation/
 __pycache__/
 *.pyc
 *.pyo
+
+# ══ v5 内嵌 CPython 运行时：二进制随 exe 分发，由 tools/make_python_runtime.py 生成 ══
+pyruntime/
+embed.log
+.py_stop
+pipeline/_embedded_boot.pyc
