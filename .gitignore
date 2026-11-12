@@ -1,0 +1,44 @@
+# ══ 绝对不能入库：公众号登录态 / 会话快照 / 接口抓包 ══
+MpProfile/
+MpAdminProfile/
+session.json
+cookies.txt
+cookie-header.txt
+status.txt
+nav_history.txt
+events.log
+events-v1.log
+responses/
+parsed/
+explore/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+# ══ 本机私有配置、凭据与运行台账 ══
+ocr.local.json
+pipeline/config.json
+pipeline/state.json
+pipeline/drafts_cache.json
+pipeline/uploaded.json
+pipeline/overlay.log
+pipeline/.trash/
+pipeline/out/
+pipeline/materials/
+
+# ══ 二进制 / 构建产物：用 build.bat 编译 + windeployqt 自行部署 ══
+# 需要自备 WebView2Loader.dll 与 Qt 6.5.3 MinGW 运行库，仓库只放源码
+*.exe
+*.dll
+platforms/
+styles/
+imageformats/
+tls/
+generic/
+iconengines/
+networkinformation/
+__pycache__/
+*.pyc
+*.pyo

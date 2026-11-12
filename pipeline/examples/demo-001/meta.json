@@ -1,0 +1,14 @@
+{
+  "id": "demo-001",
+  "title": "AI 自动阅卷：把老师从重复劳动里解放出来",
+  "summary": "猫鱼 Office2PDF 桌面版 v2.1.0，客观题填涂识别、主观题看图评阅、评分标准与成绩导出，全部在一台电脑上完成。",
+  "author": "AI智能小工匠",
+  "cover": "images/cover.png",
+  "images": [
+    "images/01.png",
+    "images/02.png"
+  ],
+  "tags": ["AI阅卷", "Office2PDF", "效率工具"],
+  "source": "demo-001",
+  "created_at": "2026-11-12"
+}

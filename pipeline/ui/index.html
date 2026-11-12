@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>素材库 · 公众号文章流水线</title>
+<style>
+:root{--bg:#f4f6f8;--panel:#fff;--panel2:#fafbfc;--line:#e6e9ed;--line2:#d8dce2;--text:#20242b;--muted:#8b929c;--accent:#07c160;--accent-soft:#e9f8ef;--blue:#2f7de1;--blue-soft:#eaf2fd;--amber:#c98610;--amber-soft:#fdf4e3;--red:#d0483f;--red-soft:#fcecea;--shadow:0 1px 2px rgba(20,30,40,.04)}
+@media (prefers-color-scheme:dark){:root{--bg:#17191d;--panel:#202329;--panel2:#262a31;--line:#333841;--line2:#414752;--text:#e8eaed;--muted:#9aa2ae;--accent:#22c56e;--accent-soft:#1b3326;--blue:#6ba7f0;--blue-soft:#1e2c3e;--amber:#e2ae52;--amber-soft:#37301f;--red:#ef7a72;--red-soft:#3a2422;--shadow:none}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{display:flex;flex-direction:column;height:100vh}
+header{display:flex;align-items:center;gap:14px;height:56px;min-height:56px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:600;white-space:nowrap}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:12px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+.pill.warn{color:var(--amber);background:var(--amber-soft);border-color:transparent}
+.pill.off{color:var(--red);background:var(--red-soft);border-color:transparent}
+.path{margin-left:auto;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.body{display:flex;flex:1;min-height:0}
+aside{width:290px;min-width:290px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.side-top{padding:14px;border-bottom:1px solid var(--line)}
+.search{width:100%;padding:8px 11px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);outline:none}
+.search:focus{border-color:var(--accent)}
+.filters{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+.chip{padding:3px 9px;border-radius:14px;border:1px solid var(--line);background:transparent;font-size:12px;color:var(--muted)}
+.chip.on{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+.list{flex:1;overflow:auto;padding:8px}
+.card{padding:11px 12px;border:1px solid transparent;border-radius:10px;margin-bottom:5px;cursor:pointer;border-left:3px solid transparent}
+.card:hover{background:var(--panel2)}
+.card.on{background:var(--accent-soft);border-left-color:var(--accent)}
+.card h3{margin:0 0 4px;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .sub{font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.st{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+.st.composed{color:var(--blue);background:var(--blue-soft);border-color:transparent}
+.st.drafted{color:var(--amber);background:var(--amber-soft);border-color:transparent}
+.st.published{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+.st.failed{color:var(--red);background:var(--red-soft);border-color:transparent}
+.side-foot{padding:12px;border-top:1px solid var(--line)}
+main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.doc-head{padding:16px 22px 12px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.doc-title{flex:1;min-width:220px}
+.doc-title h2{margin:0;font-size:19px;font-weight:600;line-height:1.4}
+.doc-title .meta{font-size:12px;color:var(--muted);margin-top:3px}
+.tools{display:flex;gap:7px;flex-wrap:wrap}
+.btn{padding:7px 13px;border-radius:8px;border:1px solid var(--line2);background:var(--panel);font-size:13px;white-space:nowrap;transition:.15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{opacity:.88;color:#fff}
+.btn.danger{color:var(--red)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:0 22px;background:var(--panel);border-bottom:1px solid var(--line)}
+.tab{padding:10px 16px;border:none;background:transparent;color:var(--muted);font-size:13px;border-bottom:2px solid transparent}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tab .badge{display:inline-block;min-width:15px;height:15px;line-height:15px;border-radius:8px;background:var(--red);color:#fff;font-size:10px;text-align:center;margin-left:5px;padding:0 4px}
+.panes{flex:1;overflow:auto;padding:18px 22px 30px}
+.pane{display:none}
+.pane.on{display:block}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);margin-bottom:16px}
+.box h4{margin:0 0 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.box h4 small{font-weight:400;color:var(--muted);font-size:11px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.field .cnt{float:right;font-size:11px;color:var(--muted)}
+.inp{width:100%;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);outline:none;font-size:13px}
+.inp:focus{border-color:var(--accent);background:var(--panel)}
+textarea.inp{resize:vertical;line-height:1.7}
+.row{display:flex;gap:8px;align-items:center}
+.row .inp{flex:1}
+.md{width:100%;min-height:430px;padding:14px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);outline:none;font:13px/1.85 ui-monospace,SFMono-Regular,Consolas,"Microsoft YaHei",monospace;resize:vertical}
+.md:focus{border-color:var(--accent);background:var(--panel)}
+.hint{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.7}
+.imgs{display:flex;flex-direction:column;gap:8px}
+.img{padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.img .top{display:flex;align-items:center;gap:7px;font-size:12px}
+.img .thumb{width:38px;height:38px;object-fit:cover;border-radius:6px;background:var(--line);flex:none}
+.img .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.img .acts{display:flex;gap:5px;margin-top:6px}
+.mini{padding:2px 7px;font-size:11px;border-radius:6px;border:1px solid var(--line2);background:var(--panel)}
+.mini:hover{color:var(--accent);border-color:var(--accent)}
+.mini.del:hover{color:var(--red);border-color:var(--red)}
+.preview-wrap{display:flex;justify-content:center}
+.phone{width:100%;max-width:440px;min-height:600px;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.phone iframe{width:100%;height:760px;border:0;display:block;background:#fff}
+.preview-note{text-align:center;font-size:12px;color:var(--muted);margin:10px 0 0}
+.check{display:flex;gap:9px;padding:10px 12px;border-radius:8px;background:var(--panel2);margin-bottom:7px;font-size:13px;align-items:flex-start}
+.check .flag{flex:none;width:18px;text-align:center}
+.check.bad{background:var(--red-soft);color:var(--red)}
+.check.warn{background:var(--amber-soft);color:var(--amber)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:7px 12px;font-size:13px}
+.kv .k{color:var(--muted)}
+pre.log{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:280px;overflow:auto;min-height:60px}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);gap:10px;text-align:center}
+.empty .big{font-size:40px;opacity:.35}
+#toast{position:absolute;left:50%;bottom:28px;transform:translateX(-50%) translateY(14px);background:#252a31;color:#fff;padding:9px 18px;border-radius:9px;font-size:13px;opacity:0;pointer-events:none;transition:.22s;z-index:99;max-width:80vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.bad{background:#b23c34}
+.mask{display:none;position:absolute;inset:0;background:rgba(15,20,25,.42);z-index:98;align-items:center;justify-content:center}
+.mask.on{display:flex}
+.dialog{background:var(--panel);border-radius:14px;padding:22px;width:min(420px,90vw);box-shadow:0 12px 40px rgba(0,0,0,.18)}
+.dialog h3{margin:0 0 16px;font-size:16px}
+.dialog .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.note{font-size:12px;line-height:1.8;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.step{display:flex;gap:10px;padding:7px 0;font-size:13px}
+.step .n{width:20px;height:20px;flex:none;border-radius:50%;background:var(--accent-soft);color:var(--accent);text-align:center;line-height:20px;font-size:11px}
+.step.man .n{background:var(--amber-soft);color:var(--amber)}
+.dialog.wide{width:min(580px,92vw)}
+.btn.danger.solid{background:var(--red);border-color:var(--red);color:#fff}
+.btn.danger.solid:hover{opacity:.86;color:#fff}
+.dlg-list{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin:10px 0}
+.dlg-row{display:flex;gap:9px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px;align-items:flex-start}
+.dlg-row:last-child{border:0}
+.dlg-row .lbl{flex:none;width:62px;color:var(--muted)}
+.dlg-row .pth{flex:1;min-width:0;word-break:break-all;font:11px/1.5 ui-monospace,Consolas,monospace}
+.dlg-row .sz{flex:none;color:var(--muted)}
+.dlg-warn{background:var(--amber-soft);color:var(--amber);border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.7;margin:8px 0}
+.dlg-err{background:var(--red-soft);color:var(--red)}
+.chk{display:flex;gap:7px;align-items:flex-start;font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+.trash-item{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--panel2)}
+.trash-item .ti{flex:1;min-width:0}
+.trash-item .ti b{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trash-item .ti small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.trash-item .acts{display:flex;gap:6px;flex:none}
+/* ── 实时预览：图片代理 / 加载状态 ── */
+.pv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:440px;margin:0 auto 10px;font-size:12px}
+.pv-bar b{font-size:13px;white-space:nowrap}
+.pv-chk{display:flex;align-items:center;gap:5px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.pv-chk input{margin:0}
+.pv-bar .btn{padding:4px 10px;font-size:12px}
+#pv-stat{color:var(--muted);white-space:nowrap}
+/* ── 全屏编辑 ── */
+.fs-only{display:none}
+.fs-enter{margin:5px 0 5px auto;padding:4px 11px;font-size:12px}
+.fs-box-btn{margin-left:auto;font-size:11px;padding:2px 9px}
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.fs-sep{width:1px;height:20px;background:var(--line2);margin:0 3px;flex:none}
+.fs-hint{font-size:11px;color:var(--muted);white-space:nowrap}
+#fs-preview-pane{display:none}
+.app.fs-mode{position:fixed;inset:0;z-index:50;height:100vh;background:var(--bg)}
+.app.fs-mode header,.app.fs-mode aside,.app.fs-mode .tabs{display:none!important}
+.app.fs-mode .body{flex:1;min-height:0}
+.app.fs-mode .doc-head{padding:7px 14px;min-height:50px;align-items:center;gap:10px}
+.app.fs-mode .doc-title{flex:0 1 auto;min-width:0}
+.app.fs-mode .doc-title h2{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw}
+.app.fs-mode .doc-title .meta{display:none}
+.app.fs-mode .tools:not(.fs-tools){display:none}
+.app.fs-mode .fs-tools{display:flex;align-items:center;gap:6px;flex:1}
+.app.fs-mode .fs-hint{margin-left:auto}
+.app.fs-mode .panes{padding:12px 14px 14px;overflow:hidden;display:flex}
+.app.fs-mode .pane{display:none}
+.app.fs-mode .pane.on{display:flex;flex:1;min-height:0;flex-direction:column}
+.app.fs-mode #pane-preview.on,.app.fs-mode #pane-check.on{display:block;overflow:auto}
+.app.fs-mode #pane-preview .phone{height:100%;min-height:0;display:flex}
+.app.fs-mode #pane-preview .phone iframe{height:100%;min-height:0}
+.app.fs-mode #empty{display:none!important}
+.app.fs-mode #editor{display:flex!important;flex:1;min-height:0;flex-direction:column}
+.app.fs-mode #editor .grid{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 300px;gap:14px}
+.app.fs-mode #editor .grid>div:not(.fs-preview-pane){min-height:0;display:flex;flex-direction:column}
+.app.fs-mode #fs-main-col{overflow:hidden}
+.app.fs-mode #side-col{overflow:auto;padding-right:2px}
+.app.fs-mode #box-info{flex:none}
+.app.fs-mode #box-body{flex:1;min-height:0;display:flex;flex-direction:column;margin-bottom:0}
+.app.fs-mode .md{flex:1;min-height:0;height:auto;resize:none}
+.app.fs-mode.fs-focus #editor .grid{grid-template-columns:1fr}
+.app.fs-mode.fs-focus #editor .grid>#side-col,.app.fs-mode.fs-focus #box-info{display:none}
+.app.fs-mode.fs-split #editor .grid>#side-col{display:none}
+.app.fs-mode.fs-split #editor .grid{grid-template-columns:minmax(0,1fr) 380px}
+.app.fs-mode.fs-split #fs-preview-pane{display:flex;flex:1;min-height:0;flex-direction:column;margin-bottom:0}
+.app.fs-mode.fs-split #frame2{flex:1;min-height:0;width:100%;border:1px solid var(--line2);border-radius:8px;background:#fff}
+@media(max-width:900px){
+  .app.fs-mode #editor .grid{grid-template-columns:1fr}
+  .app.fs-mode #editor .grid>#side-col,.app.fs-mode.fs-split #fs-preview-pane{display:none}
+  .app.fs-mode .fs-hint,.app.fs-mode .fs-sep{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><span class="dot"></span>素材库</div>
+    <span class="pill" id="p-mode">草稿模式</span>
+    <span class="pill" id="p-probe">探针检测中</span>
+    <span class="pill" id="p-overlay">后台增强检测中</span>
+    <span class="pill" id="p-count">0 条素材</span>
+    <span class="path" id="p-path"></span>
+    <button class="btn" onclick="refreshAll()">刷新</button>
+  </header>
+  <div class="body">
+    <aside>
+      <div class="side-top">
+        <input class="search" id="q" placeholder="搜索标题 / ID / 标签" oninput="renderList()">
+        <div class="filters" id="filters"></div>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="side-foot" style="display:flex;gap:7px">
+        <button class="btn primary" style="flex:1" onclick="showNew()">＋ 新建素材</button>
+        <button class="btn" onclick="showTrash()" title="查看 / 还原已删除的本地文章">回收站<span id="trash-n"></span></button>
+      </div>
+    </aside>
+    <main>
+      <div class="doc-head" id="doc-head" style="display:none">
+        <div class="doc-title">
+          <h2 id="d-title">—</h2>
+          <div class="meta" id="d-meta"></div>
+        </div>
+        <div class="tools">
+          <button class="btn primary" onclick="save()">保存</button>
+          <button class="btn" onclick="build()">生成预览</button>
+          <button class="btn" onclick="showUpload()" title="把本地图片传到公众号官方素材库并回填微信地址">上传图片</button>
+          <button class="btn" onclick="showInject()" title="给已有草稿补正文图片和封面（存草稿时已自动执行）">补图/封面</button>
+          <button class="btn" onclick="doDraft()">存草稿</button>
+          <button class="btn" onclick="showRevise()" title="用本地最新内容覆盖更新公众号后台那篇已存草稿（不新建）">更新草稿</button>
+          <button class="btn" onclick="doCopy()">复制排版</button>
+          <button class="btn" onclick="doGuide()">发布指引</button>
+          <button class="btn" onclick="doPublished()">标记已发布</button>
+          <button class="btn danger" onclick="showDelete()">删除</button>
+        </div>
+        <div class="tools fs-tools fs-only" id="fs-tools">
+          <button class="btn primary" onclick="save()">保存</button>
+          <button class="btn" onclick="build()">生成预览</button>
+          <button class="btn" onclick="doCopy()">复制排版</button>
+          <button class="btn" onclick="doDraft()">存草稿</button>
+          <button class="btn" onclick="showRevise()">更新草稿</button>
+          <span class="fs-sep"></span>
+          <button class="btn" data-layout="dual" onclick="fsSetLayout('dual')" title="保留文章信息与图片侧栏">双栏</button>
+          <button class="btn" data-layout="focus" onclick="fsSetLayout('focus')" title="只留正文，写作区最大化">专注</button>
+          <button class="btn" data-layout="split" onclick="fsSetLayout('split')" title="左边写、右边实时预览">并排预览</button>
+          <span class="fs-sep"></span>
+          <button class="btn" onclick="exitFullEdit()">退出全屏 ⨯</button>
+          <span class="fs-hint">Esc 退出 · Ctrl+S 保存 · F11 浏览器全屏 · <b id="fs-count">0 字</b></span>
+        </div>
+      </div>
+      <div class="tabs" id="tabs" style="display:none">
+        <button class="tab on" data-tab="edit" onclick="tab('edit')">编辑</button>
+        <button class="tab" data-tab="preview" onclick="tab('preview')">实时预览</button>
+        <button class="tab" data-tab="check" onclick="tab('check')">核对与输出<span class="badge" id="log-badge" style="display:none">1</span></button>
+        <button class="btn fs-enter" onclick="toggleFullEdit()" title="把编辑区铺满屏幕（Esc 退出，F11 浏览器全屏）">⛶ 全屏编辑</button>
+      </div>
+      <div class="panes">
+        <div class="pane on" id="pane-edit">
+          <div class="empty" id="empty">
+            <div class="big">▤</div>
+            <div>从左侧选一篇素材，或点「新建素材」开始</div>
+            <div class="hint">一个子文件夹 = 一篇素材：meta.json 存元信息，body.md 存正文</div>
+          </div>
+          <div id="editor" style="display:none">
+            <div class="grid">
+              <div id="fs-main-col">
+                <div class="box" id="box-info">
+                  <h4>文章信息 <small>标题 ≤64 字，摘要 ≤120 字（微信限制）</small></h4>
+                  <div class="field"><label>标题 <span class="cnt" id="c-title"></span></label>
+                    <input class="inp" id="f-title" maxlength="64" oninput="dirty()"></div>
+                  <div class="field"><label>摘要 <span class="cnt" id="c-summary"></span></label>
+                    <textarea class="inp" id="f-summary" rows="2" maxlength="120" oninput="dirty()"></textarea></div>
+                  <div class="row" style="margin-bottom:12px">
+                    <div class="field" style="flex:1;margin:0"><label>作者</label>
+                      <input class="inp" id="f-author" oninput="dirty()"></div>
+                    <div class="field" style="flex:1;margin:0"><label>标签（逗号分隔）</label>
+                      <input class="inp" id="f-tags" oninput="dirty()" placeholder="AI阅卷, 效率工具"></div>
+                  </div>
+                  <div class="field" style="margin:0"><label>封面图</label>
+                    <div class="row">
+                      <input class="inp" id="f-cover" oninput="dirty()" placeholder="本地路径或 https:// 图片地址">
+                      <label class="btn" style="margin:0">上传<input type="file" accept="image/*" hidden onchange="uploadCover(this)"></label>
+                    </div>
+                  </div>
+                </div>
+                <div class="box" id="box-body">
+                  <h4>正文 Markdown <small>改动会实时反映到「实时预览」</small>
+                    <button class="mini fs-box-btn" id="fs-box-btn" onclick="toggleFullEdit()" title="把编辑区铺满屏幕（Esc 退出）">⛶ 全屏编辑</button></h4>
+                  <textarea class="md" id="f-body" oninput="dirty()" spellcheck="false"></textarea>
+                  <div class="hint">支持 <b>## 小标题</b> · **加粗** · `代码` · &gt; 引用 · - 列表 · --- 分隔线 · ![图注](0) 引用第 0 张图 · Ctrl+S 保存</div>
+                </div>
+              </div>
+              <div id="side-col">
+                <div class="box">
+                  <h4>图片 <small>正文用 ![图注](序号)</small></h4>
+                  <div id="up-hint" class="note" style="display:none;margin:0 0 10px"></div>
+                  <div class="imgs" id="imgs"></div>
+                  <label class="btn" style="display:block;text-align:center;margin-top:10px">＋ 上传图片
+                    <input type="file" accept="image/*" multiple hidden onchange="uploadImages(this)"></label>
+                  <div class="hint">上传的图片保存在该素材的 images/ 目录。本地图片粘到微信前仍需先在公众号素材库上传，核对页会列出待传清单。</div>
+                </div>
+                <div class="box">
+                  <h4>流水线顺序</h4>
+                  <div class="step"><span class="n">1</span><span>在素材库写内容并保存</span></div>
+                  <div class="step"><span class="n">2</span><span>生成预览 → 得到排版片段</span></div>
+                  <div class="step"><span class="n">3</span><span>存草稿 / 复制排版到剪贴板</span></div>
+                  <div class="step man"><span class="n">4</span><span>编辑器 Ctrl+A、Ctrl+V、保存草稿</span></div>
+                  <div class="step man"><span class="n">5</span><span>后台核对后手动点「发表」</span></div>
+                  <div class="step"><span class="n">6</span><span>回来点「标记已发布」回写台账</span></div>
+                  <div class="note" style="margin-top:10px">草稿模式下「发布指引」只打印说明，流水线不会点群发。</div>
+                </div>
+              </div>
+              <div class="box fs-preview-pane" id="fs-preview-pane">
+                <h4>实时预览 <small>左边输入，右边自动刷新 · 手机宽度模拟</small></h4>
+                <iframe id="frame2" title="全屏编辑实时预览" referrerpolicy="no-referrer"></iframe>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pane" id="pane-preview">
+          <div class="pv-bar">
+            <b>实时预览</b>
+            <label class="pv-chk" title="把微信 CDN 图片换成本机同源地址，绕开 Referer 防盗链"><input type="checkbox" id="pv-proxy" checked onchange="onProxyToggle()"> 图片走本地代理</label>
+            <button class="btn" onclick="renderPreview()" title="重新渲染并重载图片">↻ 重刷</button>
+            <span id="pv-stat">图片加载中…</span>
+          </div>
+          <div class="preview-wrap"><div class="phone"><iframe id="frame" title="文章实时预览" referrerpolicy="no-referrer"></iframe></div></div>
+          <div class="preview-note" id="preview-note">手机宽度模拟 · 图片来自本机素材目录</div>
+        </div>
+        <div class="pane" id="pane-check">
+          <div class="box">
+            <h4>发布前核对 <small id="chk-sum"></small></h4>
+            <div id="checks"></div>
+          </div>
+          <div class="box">
+            <h4>产物与状态</h4>
+            <div class="kv" id="kv"></div>
+          </div>
+          <div class="box">
+            <h4>操作输出 <small>命令行原样回显</small></h4>
+            <pre class="log" id="log">（暂无输出）</pre>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div class="mask" id="mask">
+  <div class="dialog">
+    <h3 id="dlg-title">新建素材</h3>
+    <div class="field"><label>素材 ID（字母/数字/中划线，作为文件夹名）</label>
+      <input class="inp" id="n-id" placeholder="例如 my-002"></div>
+    <div class="field"><label>标题</label>
+      <input class="inp" id="n-title" placeholder="文章标题"></div>
+    <div class="foot">
+      <button class="btn" onclick="hideNew()">取消</button>
+      <button class="btn primary" onclick="doNew()">创建</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="delmask">
+  <div class="dialog wide">
+    <h3>删除本地文章</h3>
+    <div class="note">删除 = <b>移入回收站</b>，文件不会立刻消失，可随时还原。<br>
+      只影响本机素材库 / 生成产物 / 台账，<b>不会删除公众号后台的草稿或已发布文章</b>。</div>
+    <div id="del-sum" style="font-size:13px;margin-top:12px"></div>
+    <div class="dlg-list" id="del-list"></div>
+    <div id="del-warn"></div>
+    <div class="field" style="margin:12px 0 0">
+      <label>输入素材 ID <b id="del-id"></b> 确认删除</label>
+      <input class="inp" id="del-confirm" placeholder="原样输入 ID" autocomplete="off" oninput="checkDelConfirm()">
+    </div>
+    <label class="chk" id="del-force-wrap" style="display:none">
+      <input type="checkbox" id="del-force" onchange="checkDelConfirm()">我知道台账显示「已发布」，仍要删除本地文件</label>
+    <div class="foot">
+      <button class="btn" onclick="hideDel()">取消</button>
+      <button class="btn danger solid" id="del-go" disabled onclick="doDelete()">移入回收站</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="trashmask">
+  <div class="dialog wide">
+    <h3>回收站 <small style="font-weight:400;color:var(--muted);font-size:12px">本地删除的文章</small></h3>
+    <div class="note">还原会把文件放回原来的位置；「彻底删除」才是永久抹掉，且不可恢复。</div>
+    <div id="trash-list" style="max-height:330px;overflow:auto;margin-top:12px"></div>
+    <div class="foot">
+      <button class="btn danger" id="trash-clear" onclick="purgeAll()">清空回收站</button>
+      <button class="btn primary" onclick="hideTrash()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="upmask">
+  <div class="dialog wide">
+    <h3>上传到公众号素材库</h3>
+    <div class="note">会把勾选的本地图片<b>真实上传到公众号官方素材库</b>（可在后台删除）。<br>
+      成功后自动把 meta.json 里的本地路径换成微信 CDN 地址，并重新生成预览/排版片段；粘贴进编辑器时图片就能直接显示。<br>
+      需要探针在线且已登录；<b>不会点发表、不会群发</b>。</div>
+    <div id="up-sum" style="font-size:13px;margin-top:12px"></div>
+    <div class="dlg-list" id="up-list" style="max-height:250px"></div>
+    <div id="up-warn"></div>
+    <div class="foot">
+      <button class="btn" onclick="hideUpload()">取消</button>
+      <button class="btn primary" id="up-go" disabled onclick="doUploadMedia()">上传 0 张</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="injmask">
+  <div class="dialog wide">
+    <h3>补齐正文图片与封面</h3>
+    <div class="note">走公众号编辑器官方 UI，把已上传的图片插进草稿正文、设置封面，然后保存草稿。<br>
+      <b>不改正文文字、不点发表/群发</b>；已存在的图片和封面会自动跳过，可重复执行。<br>
+      需要探针在线且已登录公众号后台；「存草稿」按钮现在也会自动做这一步。</div>
+    <div id="inj-sum" style="font-size:13px;margin-top:12px"></div>
+    <div class="dlg-list" id="inj-list" style="max-height:230px"></div>
+    <div id="inj-warn"></div>
+    <label class="dlg-row" style="align-items:center;gap:8px;margin-top:10px;cursor:pointer">
+      <input type="checkbox" id="inj-replace"> 草稿已有封面时也强制换成这篇素材的封面
+    </label>
+    <div class="foot">
+      <button class="btn" onclick="hideInject()">取消</button>
+      <button class="btn primary" id="inj-go" disabled onclick="doInject()">补齐并保存草稿</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="revmask">
+  <div class="dialog wide">
+    <h3>更新已存草稿</h3>
+    <div class="note">用<b>本地最新内容</b>覆盖公众号后台那篇【已有草稿】，appmsgid 不变、<b>不会新建草稿</b>。<br>
+      会重写标题 / 作者 / 摘要 / 正文纯文本，并按本地图片清单重插正文图，保存后自动刷新复核。<br>
+      <b>不点发表 / 群发</b>；后台手工改过的内容会被本地覆盖，完整排版仍需「复制排版」人工粘贴。</div>
+    <div id="rev-sum" style="font-size:13px;margin-top:12px"></div>
+    <div class="field" style="margin:12px 0 0">
+      <label>目标后台草稿 appmsgid <small style="font-weight:400;color:var(--muted)">（可下拉选 / 留空自动按标题查找）</small></label>
+      <input class="inp" id="rev-appid" list="rev-drafts" placeholder="例如 100000035，留空自动查找"
+             autocomplete="off" oninput="checkRevConfirm()">
+      <datalist id="rev-drafts"></datalist>
+      <button class="btn" style="margin-top:8px" onclick="scanDrafts()">重新读取后台草稿箱</button>
+    </div>
+    <div class="dlg-list" id="rev-list" style="max-height:190px;margin-top:10px"></div>
+    <div id="rev-warn"></div>
+    <label class="chk"><input type="checkbox" id="rev-replace"> 强制换成本地封面（默认保留后台现有封面）</label>
+    <label class="chk"><input type="checkbox" id="rev-nomedia" onchange="checkRevConfirm()"> 只改文字，保留后台原有图片和封面</label>
+    <label class="chk" id="rev-force-wrap" style="display:none">
+      <input type="checkbox" id="rev-force" onchange="checkRevConfirm()"> 忽略本地待填项，仍然更新</label>
+    <div class="note" style="margin:12px 0 0">点「覆盖更新草稿」即执行：不新建草稿、不点发表/群发；只存草稿模式不变。</div>
+    <div class="foot">
+      <button class="btn" onclick="hideRevise()">取消</button>
+      <button class="btn primary" id="rev-go" disabled onclick="doRevise()">覆盖更新草稿</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let LIST = [], CUR = null, DIRTY = false, FILTER = 'all', TIMER = null, RENDER_SEQ = 0;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function api(path, method, body) {
+  const opt = {method: method || 'GET', headers: {'Content-Type':'application/json'}};
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch('/api/' + path, opt);
+  const j = await r.json().catch(() => ({ok:false, error:'返回不是 JSON'}));
+  if (!j.ok) throw new Error(j.error || '请求失败');
+  return j;
+}
+
+function toast(msg, bad) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.className = '', 3200);
+}
+
+function log(text) {
+  const el = $('log');
+  const stamp = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  const cur = el.textContent.startsWith('（暂无输出）') ? '' : el.textContent + '\n';
+  el.textContent = cur + '── ' + stamp + ' ──\n' + text;
+  el.scrollTop = 0;
+  $('log-badge').style.display = 'inline-block';
+}
+
+function dirty() {
+  DIRTY = true;
+  $('c-title').textContent = $('f-title').value.length + '/64';
+  $('c-summary').textContent = $('f-summary').value.length + '/120';
+  fsCount();
+  clearTimeout(TIMER);
+  TIMER = setTimeout(renderPreview, 550);
+}
+
+function tab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + name));
+  if (name === 'preview') renderPreview();
+  if (name === 'check') $('log-badge').style.display = 'none';
+}
+
+/* ===== 全屏编辑：应用内铺满 + 浏览器级全屏，三种布局 ===== */
+let FS_ON = false, FS_NATIVE = false;
+const FS_LAYOUTS = ['dual', 'focus', 'split'];
+const fsApp = () => document.querySelector('.app');
+
+function fsLayout() {
+  const v = localStorage.getItem('mpui.fs.layout');
+  return FS_LAYOUTS.indexOf(v) >= 0 ? v : 'dual';
+}
+function fsCount() {
+  if ($('fs-count')) $('fs-count').textContent = ($('f-body').value || '').length + ' 字';
+}
+function applyFsLayout() {
+  const name = fsLayout();
+  FS_LAYOUTS.forEach(x => fsApp().classList.toggle('fs-' + x, FS_ON && x === name));
+  document.querySelectorAll('#fs-tools [data-layout]').forEach(b =>
+    b.classList.toggle('on', b.dataset.layout === name));
+  if (FS_ON && name === 'split') renderPreview();
+}
+function fsSetLayout(name) {
+  if (FS_LAYOUTS.indexOf(name) < 0) name = 'dual';
+  localStorage.setItem('mpui.fs.layout', name);
+  applyFsLayout();
+  toast(name === 'focus' ? '专注模式：只留正文' : name === 'split' ? '并排预览：左边写、右边看' : '双栏：完整编辑区');
+}
+function enterFullEdit() {
+  if (FS_ON) return;
+  if (!CUR) return toast('请先从左侧选一篇素材', true);
+  // 必须在用户手势内同步发起；不支持或被拒时自动降级为应用内铺满
+  try {
+    const p = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    if (p && p.then) p.then(() => { FS_NATIVE = true; }).catch(() => {});
+  } catch (e) {}
+  FS_ON = true;
+  fsApp().classList.add('fs-mode');
+  $('fs-box-btn').textContent = '⛶ 退出全屏';
+  tab('edit');
+  applyFsLayout();
+  fsCount();
+  $('f-body').focus();
+  toast('已进入全屏编辑 · Esc 退出，Ctrl+S 保存');
+}
+function exitFullEdit() {
+  if (!FS_ON) return;
+  FS_ON = false;
+  fsApp().classList.remove('fs-mode', 'fs-dual', 'fs-focus', 'fs-split');
+  $('fs-box-btn').textContent = '⛶ 全屏编辑';
+  try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) {}
+  FS_NATIVE = false;
+}
+function toggleFullEdit() { FS_ON ? exitFullEdit() : enterFullEdit(); }
+
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) FS_NATIVE = true;
+  else if (FS_ON && FS_NATIVE) exitFullEdit();
+});
+
+async function refreshAll() {
+  try {
+    const ov = await api('overview');
+    $('p-path').textContent = ov.root;
+    $('p-count').textContent = ov.total + ' 条素材 · 今日已发布 ' + ov.published_today;
+    $('p-mode').textContent = ov.mode === 'draft_only' ? '草稿模式' : ov.mode;
+    $('p-mode').className = 'pill ' + (ov.mode === 'draft_only' ? 'ok' : 'warn');
+    const p = ov.probe || {};
+    const online = p.state === 'LOGGED_IN' && p.cdp_ready;
+    $('p-probe').textContent = online ? '探针在线' : '探针离线';
+    $('p-probe').className = 'pill ' + (online ? 'ok' : 'off');
+    const data = await api('list');
+    LIST = data.items;
+    renderFilters();
+    renderList();
+    try {
+      const o = await api('overlay');
+      const on = o.state === 'injected';
+      const ROUTE = {material:'素材库', draft:'草稿箱', published:'发表记录', editor:'图文编辑器', other:'其他页面'};
+      const where = ROUTE[o.route] || o.route || '';
+      $('p-overlay').textContent = on ? ('后台增强 · ' + where) : ('后台增强 ' + o.state);
+      $('p-overlay').className = 'pill ' + (on ? 'ok' : 'warn');
+      $('p-overlay').title = (o.url || '') + ' · v' + (o.script_v || '?') +
+                             ' · 注入 ' + (o.injections || 0) + ' 次';
+    } catch (e) { $('p-overlay').textContent = '后台增强未连接'; $('p-overlay').className = 'pill off'; }
+  } catch (e) { toast('加载失败：' + e.message, true); }
+}
+
+function renderFilters() {
+  const names = {all:'全部', new:'待生成', composed:'已生成', drafted:'草稿', published:'已发布', failed:'失败'};
+  $('filters').innerHTML = Object.keys(names).map(k =>
+    '<button class="chip ' + (FILTER === k ? 'on' : '') + '" onclick="FILTER=\'' + k + '\';renderFilters();renderList()">' + names[k] + '</button>').join('');
+}
+
+function renderList() {
+  const q = $('q').value.trim().toLowerCase();
+  const rows = LIST.filter(x => (FILTER === 'all' || x.status === FILTER) &&
+    (!q || (x.title + x.id + (x.tags || []).join('')).toLowerCase().includes(q)));
+  $('list').innerHTML = rows.length ? rows.map(x =>
+    '<div class="card ' + (CUR && CUR.id === x.id ? 'on' : '') + '" onclick="openMat(\'' + esc(x.id) + '\')">' +
+      '<h3>' + esc(x.title || x.id) + (x.editable ? '' : ' <span class="st">只读</span>') + '</h3>' +
+      '<div class="sub"><span class="st ' + esc(x.status) + '">' + esc(x.status) + '</span>' +
+      '<span>' + x.body_len + ' 字</span><span>' + (x.images || []).length + ' 图</span></div>' +
+      '<div class="sub" style="margin-top:3px;opacity:.75">' + esc(x.id) + (x.errs.length ? ' · ❌ ' + esc(x.errs[0]) : '') + '</div>' +
+    '</div>').join('') : '<div class="hint" style="padding:14px;text-align:center">没有匹配的素材</div>';
+}
+
+async function openMat(id) {
+  if (DIRTY && !confirm('当前修改还没保存，确定切换吗？')) return;
+  try {
+    const d = await api('get?id=' + encodeURIComponent(id));
+    CUR = d; DIRTY = false;
+    $('empty').style.display = 'none';
+    $('editor').style.display = 'block';
+    $('doc-head').style.display = 'flex';
+    $('tabs').style.display = 'flex';
+    const m = d.meta || {};
+    $('f-title').value = m.title || '';
+    $('f-summary').value = m.summary || '';
+    $('f-author').value = m.author || '';
+    $('f-tags').value = (m.tags || []).join(', ');
+    $('f-cover').value = m.cover || '';
+    $('f-body').value = d.body_md || '';
+    $('d-title').textContent = m.title || id;
+    $('d-meta').innerHTML = '<span class="st ' + esc((d.state || {}).status || 'new') + '">' +
+      esc((d.state || {}).status || 'new') + '</span> &nbsp; ' + esc(id) +
+      ' &nbsp;·&nbsp; ' + ((d.body_md || '').length) + ' 字 &nbsp;·&nbsp; 更新 ' + esc((d.state || {}).updated_at || '—');
+    $('c-title').textContent = $('f-title').value.length + '/64';
+    $('c-summary').textContent = $('f-summary').value.length + '/120';
+    fsCount();
+    drawImages();
+    updateChecks(d.manifest || {});
+    tab('edit');
+    renderList();
+    renderPreview();
+    updateUploadHint();
+  } catch (e) { toast('打开失败：' + e.message, true); }
+}
+
+function collect() {
+  return {
+    id: CUR.id,
+    meta: {
+      id: CUR.id,
+      title: $('f-title').value.trim(),
+      summary: $('f-summary').value.trim(),
+      author: $('f-author').value.trim(),
+      tags: $('f-tags').value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
+      cover: $('f-cover').value.trim(),
+      images: (CUR.images || []).map(x => x.path),
+      source: (CUR.meta || {}).source || CUR.id,
+      created_at: (CUR.meta || {}).created_at || ''
+    },
+    body_md: $('f-body').value
+  };
+}
+
+async function save(silent) {
+  if (!CUR) return false;
+  try {
+    const r = await api('save', 'POST', collect());
+    DIRTY = false;
+    if (!silent) toast('已保存到素材库' + (r.errs.length ? '（有 ' + r.errs.length + ' 项待补）' : ''));
+    refreshAll();
+    return true;
+  } catch (e) { toast('保存失败：' + e.message, true); return false; }
+}
+
+/* 缩略图同样受微信 CDN 防盗链影响：微信域名走同源代理，其余照旧 */
+function pvUrl(u) {
+  const s = String(u || '');
+  if (!/^https:\/\/(mmbiz\.qpic\.cn|mmbiz\.qlogo\.cn|wx\.qlogo\.cn|qpic\.cn|res\.wx\.qq\.com|mmbiz\.wxapp\.qlogo\.cn)\//i.test(s)) return s;
+  if ($('pv-proxy') && !$('pv-proxy').checked) return s;
+  return '/remote-img?url=' + encodeURIComponent(s);
+}
+
+function drawImages() {
+  const rows = CUR.images || [];
+  $('imgs').innerHTML = rows.length ? rows.map((x, i) =>
+    '<div class="img"><div class="top">' +
+      (x.url ? '<img class="thumb" src="' + esc(pvUrl(x.url)) + '" referrerpolicy="no-referrer" onerror="this.style.visibility=\'hidden\'">' : '<div class="thumb"></div>') +
+      '<div class="nm" title="' + esc(x.path) + '"><b>[' + i + ']</b> ' + esc(x.path.split('/').pop()) + '<br>' +
+      '<span style="color:var(--muted)">' + (x.exists ? '✅ 文件可用' : '❌ 找不到文件') + '</span></div></div>' +
+      '<div class="acts"><button class="mini" onclick="insertImg(' + i + ')">插入正文</button>' +
+      '<button class="mini" onclick="setCover(' + i + ')">设为封面</button>' +
+      '<button class="mini del" onclick="delImg(' + i + ')">移除</button></div></div>').join('')
+    : '<div class="hint">还没有图片。上传后正文用 ![图注](0) 引用。</div>';
+}
+
+function insertImg(i) {
+  const ta = $('f-body'), mark = '\n![图注](' + i + ')\n';
+  const p = ta.selectionStart;
+  ta.value = ta.value.slice(0, p) + mark + ta.value.slice(ta.selectionEnd);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = p + mark.length;
+  dirty();
+}
+function setCover(i) { $('f-cover').value = CUR.images[i].path; dirty(); toast('已设为封面，记得保存'); }
+function delImg(i) { CUR.images.splice(i, 1); drawImages(); dirty(); }
+
+async function upload(file, asCover) {
+  if (!CUR || !file) return;
+  const data = await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.onerror = () => rej(new Error('读取失败'));
+    fr.readAsDataURL(file);
+  });
+  const r = await api('upload', 'POST', {id: CUR.id, name: file.name, data: data});
+  if (asCover) { $('f-cover').value = r.path; }
+  else { CUR.images.push({path: r.path, url: r.url || '', exists: true}); drawImages(); }
+  dirty();
+  toast(r.message);
+  renderPreview();
+}
+async function uploadCover(inp) {
+  try { await upload(inp.files[0], true); } catch (e) { toast('上传失败：' + e.message, true); }
+  inp.value = '';
+}
+async function uploadImages(inp) {
+  for (const f of inp.files) {
+    try { await upload(f, false); } catch (e) { toast(f.name + '：' + e.message, true); }
+  }
+  inp.value = '';
+}
+
+/* iframe 内的小探针：统计图片加载结果；直连 CDN 失败时自动改走同源代理重试一次。
+   注意 iframe 脚本的结束标签必须拆开写，否则会提前结束父页面的 script 标签。 */
+const PV_PROBE =
+  '(function(){' +
+    'function report(){var a=document.images,ok=0,bad=0;' +
+    'for(var i=0;i<a.length;i++){(a[i].complete&&a[i].naturalWidth>0)?ok++:bad++;}' +
+    'try{parent.postMessage({__mpPreview:1,ok:ok,bad:bad,total:a.length},"*");}catch(e){}' +
+    '}' +
+    'function hook(img){' +
+      'img.setAttribute("doc-src",img.getAttribute("src")||"");' +
+      'img.addEventListener("load",report);' +
+      'img.addEventListener("error",function(){' +
+        'var orig=img.getAttribute("doc-src")||"";' +
+        'if(!img.getAttribute("data-retry")&&/^https:\\/\\//.test(orig)){' +
+          'img.setAttribute("data-retry","1");' +
+          'img.src="/remote-img?url="+encodeURIComponent(orig);return;' +
+        '}' +
+        'img.classList.add("imgfail");report();' +
+      '});' +
+      'if(img.complete&&img.naturalWidth===0){img.dispatchEvent(new Event("error"));}' +
+    '}' +
+    'for(var i=0;i<document.images.length;i++){hook(document.images[i]);}' +
+    'window.addEventListener("load",report);setTimeout(report,1200);' +
+  '})();';
+
+async function renderPreview() {
+  if (!CUR) return;
+  const seq = ++RENDER_SEQ;
+  const useProxy = $('pv-proxy') ? $('pv-proxy').checked : true;
+  const stat = $('pv-stat');
+  if (stat) { stat.textContent = '图片加载中…'; stat.style.color = 'var(--muted)'; }
+  try {
+    const r = await api('render', 'POST', Object.assign(collect(), {image_proxy: useProxy}));
+    if (seq !== RENDER_SEQ) return;
+    const doc = '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="referrer" content="no-referrer"><style>' +
+      'body{margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:#3f3f3f}' +
+      '.wrap{max-width:420px;margin:0 auto;padding:22px 18px 60px;box-sizing:border-box}' +
+      'h1{font-size:22px;line-height:1.45;color:#1a1a1a;margin:0 0 10px}' +
+      '.m{font-size:12px;color:#9a9a9a;margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid #eee}' +
+      'img{max-width:100%;height:auto;display:block;margin:20px auto}' +
+      'img.imgfail{outline:2px dashed #d0483f;min-height:36px;min-width:120px;background:#fcecea}' +
+      '</style></head><body><div class="wrap">' +
+      '<h1>' + esc($('f-title').value || '未命名') + '</h1>' +
+      '<p class="m">' + esc($('f-author').value || '作者待填') + ' · ' + new Date().toLocaleDateString('zh-CN') + '</p>' +
+      r.fragment + '</div><script>' + PV_PROBE + '<' + '/script></body></html>';
+    $('frame').srcdoc = doc;
+    if (FS_ON && fsApp().classList.contains('fs-split') && $('frame2')) $('frame2').srcdoc = doc;
+    $('preview-note').textContent = '实时预览 · ' + r.checks.length + ' 项核对' +
+      (r.has_blocker ? ' · 存在 ❌ 待填项' : ' · 无阻断项') +
+      (useProxy ? ' · 图片走本机代理' : ' · 图片直连 CDN（no-referrer）');
+    CUR.manifest = Object.assign({}, CUR.manifest || {}, r.manifest || {});
+    updateChecks(CUR.manifest);
+  } catch (e) {
+    $('preview-note').textContent = '预览失败：' + e.message;
+    if (stat) { stat.textContent = '预览失败'; stat.style.color = 'var(--red)'; }
+  }
+}
+
+function onProxyToggle() {
+  localStorage.setItem('mpui.preview.proxy', $('pv-proxy').checked ? '1' : '0');
+  if (CUR) drawImages();
+  renderPreview();
+}
+
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (!d || d.__mpPreview !== 1) return;
+  if (e.source !== $('frame').contentWindow &&
+      !($('frame2') && e.source === $('frame2').contentWindow)) return;
+  const s = $('pv-stat');
+  if (!s) return;
+  s.textContent = d.total
+    ? ('图片 ' + d.ok + '/' + d.total + ' 张加载成功' + (d.bad ? ' · ❌ ' + d.bad + ' 张失败' : ' ✅'))
+    : '本文暂无图片';
+  s.style.color = d.bad ? 'var(--red)' : 'var(--accent)';
+});
+
+function updateChecks(mf) {
+  const checks = mf.checks || [];
+  $('chk-sum').textContent = checks.length ? (checks.length + ' 项') : '暂无核对项';
+  $('checks').innerHTML = checks.length ? checks.map(c => {
+    const bad = c.startsWith('❌'), warn = c.startsWith('⚠️');
+    return '<div class="check ' + (bad ? 'bad' : (warn ? 'warn' : '')) + '">' +
+      '<span class="flag">' + (bad ? '❌' : (warn ? '⚠️' : '·')) + '</span><span>' + esc(c) + '</span></div>';
+  }).join('') : '<div class="check"><span class="flag">✅</span><span>暂无待办，先点「生成预览」产出清单</span></div>';
+  $('kv').innerHTML =
+    '<div class="k">素材 ID</div><div>' + esc(CUR ? CUR.id : '—') + '</div>' +
+    '<div class="k">预览文件</div><div>' + (CUR && CUR.has_preview ? '✅ 已生成' : '❌ 未生成') + '</div>' +
+    '<div class="k">排版片段</div><div>' + (CUR && CUR.has_fragment ? '✅ 已生成（可复制）' : '❌ 未生成') + '</div>' +
+    '<div class="k">待上传图片</div><div>' + ((mf.pending_upload || []).length) + ' 张</div>' +
+    '<div class="k">模板</div><div>' + esc(mf.template || '—') + '</div>' +
+    '<div class="k">生成时间</div><div>' + esc(mf.generated_at || '—') + '</div>';
+}
+
+async function ensureSaved() { return DIRTY ? save(true) : true; }
+
+async function build() {
+  if (!CUR || !await ensureSaved()) return;
+  try {
+    const r = await api('build', 'POST', {id: CUR.id});
+    toast(r.message);
+    log('[生成预览] ' + CUR.id + '\n' + JSON.stringify(r.manifest.checks, null, 2));
+    CUR.manifest = r.manifest;
+    updateChecks(r.manifest);
+    CUR.has_preview = true; CUR.has_fragment = true;
+    refreshAll();
+  } catch (e) { toast('生成失败：' + e.message, true); }
+}
+
+async function doDraft() {
+  if (!CUR || !await ensureSaved()) return;
+  // 只存草稿、不群发，草稿可在后台删除 → 不再要确认词 / 二次弹窗
+  log('[存草稿] 新建一篇公众号草稿；已存过的文章请改用「更新草稿」，不会多出一篇。草稿模式不会群发。');
+  toast('正在存草稿，请稍候…');
+  try {
+    const r = await api('draft', 'POST', {id: CUR.id});
+    log('[存草稿] ' + (r.output || r.error || '无输出'));
+    toast(r.ok ? '草稿已保存，可在核对页看输出' : '存草稿未成功，请核对输出', !r.ok);
+    refreshAll();
+  } catch (e) { toast('存草稿失败：' + e.message, true); }
+}
+
+async function doCopy() {
+  if (!CUR || !await ensureSaved()) return;
+  try {
+    await api('build', 'POST', {id: CUR.id});
+    const r = await api('copy', 'POST', {id: CUR.id});
+    toast(r.message);
+    log('[复制排版] ' + r.bytes + ' 字节已进剪贴板。\n到编辑器：点正文 → Ctrl+A → Ctrl+V → 保存为草稿。');
+  } catch (e) { toast('复制排版失败：' + e.message, true); }
+}
+
+async function doGuide() {
+  if (!CUR) return;
+  try { const r = await api('guide', 'POST', {id: CUR.id}); log('[发布指引]\n' + (r.output || r.error || '')); tab('check'); }
+  catch (e) { toast(e.message, true); }
+}
+
+async function doPublished() {
+  if (!CUR) return;
+  if (!confirm('只在【你已在公众号后台手动点完「发表」之后】才点这个。\n它会把台账记为已发布并回写素材系统。继续？')) return;
+  try {
+    const r = await api('published', 'POST', {id: CUR.id});
+    log('[标记已发布]\n' + (r.output || r.error || ''));
+    toast(r.ok ? '台账已更新' : '请核对输出', !r.ok);
+    refreshAll();
+  } catch (e) { toast(e.message, true); }
+}
+
+function showNew() {
+  $('n-id').value = '';
+  $('n-title').value = '';
+  $('mask').classList.add('on');
+  $('n-id').focus();
+}
+function hideNew() { $('mask').classList.remove('on'); }
+
+async function doNew() {
+  try {
+    const id = $('n-id').value.trim(), title = $('n-title').value.trim();
+    if (!id) return toast('请填素材 ID', true);
+    const r = await api('new', 'POST', {id: id, title: title || '未命名素材'});
+    hideNew();
+    await refreshAll();
+    await openMat(id);
+    toast(r.message);
+  } catch (e) { toast('创建失败：' + e.message, true); }
+}
+
+// ── 删除 / 回收站 ────────────────────────────────────────────────
+let DEL_PLAN = null;
+
+async function showDelete() {
+  if (!CUR) return toast('请先选一篇素材', true);
+  try {
+    const p = await api('delete-plan?id=' + encodeURIComponent(CUR.id));
+    DEL_PLAN = p;
+    $('del-id').textContent = p.id;
+    $('del-sum').innerHTML = '《' + esc(p.title || p.id) + '》 · 台账状态 <b>' + esc(p.status) +
+      '</b> · 共 ' + p.total_files + ' 个文件 / ' + (p.total_bytes / 1024).toFixed(1) + ' KB';
+    const rows = p.targets.map(t =>
+      '<div class="dlg-row"><span class="lbl">' + esc(t.label) + '</span>' +
+      '<span class="pth">' + esc(t.path) + '</span><span class="sz">' + t.files + ' 个</span></div>');
+    if (p.has_state) rows.push('<div class="dlg-row"><span class="lbl">台账记录</span>' +
+      '<span class="pth">state.json → items[' + esc(p.id) + ']</span><span class="sz">1 条</span></div>');
+    $('del-list').innerHTML = rows.length ? rows.join('') :
+      '<div class="dlg-row"><span class="pth">没有找到本地文件</span></div>';
+    $('del-warn').innerHTML = (p.warnings || []).map(w =>
+      '<div class="dlg-warn">⚠️ ' + esc(w) + '</div>').join('');
+    $('del-force-wrap').style.display = p.status === 'published' ? 'flex' : 'none';
+    $('del-force').checked = false;
+    $('del-confirm').value = '';
+    checkDelConfirm();
+    $('delmask').classList.add('on');
+    $('del-confirm').focus();
+  } catch (e) { toast('读取删除清单失败：' + e.message, true); }
+}
+
+function checkDelConfirm() {
+  if (!DEL_PLAN) return;
+  const okId = $('del-confirm').value.trim() === DEL_PLAN.id;
+  const okForce = DEL_PLAN.status !== 'published' || $('del-force').checked;
+  const hasWork = DEL_PLAN.targets.length > 0 || DEL_PLAN.has_state;
+  $('del-go').disabled = !(okId && okForce && hasWork);
+}
+
+function hideDel() { $('delmask').classList.remove('on'); DEL_PLAN = null; }
+
+async function doDelete() {
+  if (!DEL_PLAN || $('del-go').disabled) return;
+  const id = DEL_PLAN.id;
+  try {
+    const r = await api('delete', 'POST', {
+      id: id, confirm: $('del-confirm').value.trim(), force: $('del-force').checked
+    });
+    hideDel();
+    exitFullEdit();
+    CUR = null; DIRTY = false;
+    $('doc-head').style.display = 'none';
+    $('tabs').style.display = 'none';
+    $('editor').style.display = 'none';
+    $('empty').style.display = 'flex';
+    log('[删除 → 回收站] ' + id + '\n' + (r.trashed || []).join('\n'));
+    await refreshAll();
+    toast(r.message || '已移入回收站');
+  } catch (e) { toast('删除失败：' + e.message, true); }
+}
+
+async function showTrash() {
+  try {
+    const d = await api('trash');
+    $('trash-list').innerHTML = d.items.length ? d.items.map(x =>
+      '<div class="trash-item"><div class="ti"><b>' + esc(x.title || x.id) + '</b>' +
+      '<small>' + esc(x.id) + ' · ' + esc(x.deleted_at) + ' · ' + x.files + ' 个文件 · ' + esc(x.status) + '</small></div>' +
+      '<div class="acts">' +
+      '<button class="mini" onclick="doRestore(\'' + esc(x.token) + '\')">还原</button>' +
+      '<button class="mini del" onclick="doPurge(\'' + esc(x.token) + '\')">彻底删除</button>' +
+      '</div></div>').join('') :
+      '<div class="hint" style="text-align:center;padding:22px">回收站是空的</div>';
+    $('trash-clear').style.display = d.items.length ? '' : 'none';
+    $('trashmask').classList.add('on');
+  } catch (e) { toast('读取回收站失败：' + e.message, true); }
+}
+
+function hideTrash() { $('trashmask').classList.remove('on'); }
+
+async function doRestore(token) {
+  try {
+    const r = await api('restore', 'POST', {token: token});
+    await showTrash();
+    await refreshAll();
+    toast(r.message || '已还原');
+  } catch (e) { toast('还原失败：' + e.message, true); }
+}
+
+async function doPurge(token) {
+  if (!confirm('彻底删除这条回收站记录？文件将永久消失，不可恢复。')) return;
+  try {
+    const r = await api('purge', 'POST', {token: token});
+    await showTrash();
+    toast(r.message);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function purgeAll() {
+  if (!confirm('清空整个回收站？所有已删除文章将永久消失，不可恢复。')) return;
+  try {
+    const r = await api('purge', 'POST', {all: true});
+    await showTrash();
+    toast(r.message);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function updateTrashCount() {
+  try {
+    const d = await api('trash');
+    $('trash-n').textContent = d.items.length ? ' (' + d.items.length + ')' : '';
+  } catch (e) { /* 忽略 */ }
+}
+
+// ── 上传到公众号官方素材库 ──────────────────────────────────────
+let UP_PLAN = null, UP_BUSY = false, UP_STATUS = null;
+
+async function updateUploadHint() {
+  const el = $('up-hint');
+  if (!CUR) { el.style.display = 'none'; return; }
+  try {
+    const p = await api('upload-plan?id=' + encodeURIComponent(CUR.id));
+    UP_STATUS = p;
+    if (!p.items.length) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = p.pending.length
+      ? '⚠️ ' + p.pending.length + ' 张本地图片尚未上传到公众号素材库，粘贴前需处理。 ' +
+        '<button class="mini" onclick="showUpload()" style="margin-left:6px">立即上传 →</button>'
+      : '✅ 全部图片已上传，排版里用的是微信 CDN 地址。';
+  } catch (e) { el.style.display = 'none'; }
+}
+
+async function showUpload() {
+  if (!CUR) return toast('请先选一篇素材', true);
+  if (UP_BUSY) return;
+  try {
+    const p = await api('upload-plan?id=' + encodeURIComponent(CUR.id));
+    UP_PLAN = p;
+    $('up-sum').innerHTML = '《' + esc(p.title) + '》 · 待传 ' + p.pending.length +
+      ' 张 / 已传 ' + p.uploaded.length + ' 张';
+    $('up-list').innerHTML = p.items.length ? p.items.map(x => {
+      const done = x.state === 'uploaded' || x.state === 'remote', bad = x.state === 'error';
+      const sub = done ? (x.url || '').slice(0, 78) + '…' : (x.error || x.ref);
+      return '<label class="dlg-row" style="align-items:center;' +
+        (done || bad ? 'opacity:.72;' : 'cursor:pointer;') + '">' +
+        '<input type="checkbox" class="up-chk" value="' + esc(x.ref) + '" ' +
+        (done || bad ? 'disabled ' : (x.state === 'pending' ? 'checked ' : '')) +
+        'onchange="upSelected()" style="flex:none">' +
+        '<span class="pth"><b>' + esc(x.name) + '</b> · ' + (x.size / 1048576).toFixed(1) + ' MB<br>' +
+        '<small style="color:var(--muted)">' + esc(sub) + '</small></span>' +
+        '<span class="sz">' + (done ? (x.state === 'remote' ? '🌐 网络图' : '✅ 已传') :
+          (bad ? '❌' : '待上传')) + '</span></label>';
+    }).join('') : '<div class="dlg-row"><span class="pth">没有本地图片</span></div>';
+    const pr = await api('probe').catch(() => ({ok: false}));
+    $('up-warn').innerHTML = pr.ok ? '' :
+      '<div class="dlg-warn">⚠️ 探针未连接 / 未登录，上传会失败。请先启动 MpLoginProbe 并登录公众号后台。</div>';
+    upSelected();
+    $('upmask').classList.add('on');
+  } catch (e) { toast('读取上传清单失败：' + e.message, true); }
+}
+
+function upSelected() {
+  if (!UP_PLAN) return;
+  const n = document.querySelectorAll('#up-list .up-chk:checked').length;
+  const btn = $('up-go');
+  btn.disabled = UP_BUSY || n === 0;
+  btn.textContent = UP_BUSY ? '上传中…' : ('上传 ' + n + ' 张');
+}
+
+function hideUpload() { $('upmask').classList.remove('on'); UP_PLAN = null; }
+
+// ── 给已有草稿补正文图 / 封面 ─────────────────────────────────────
+let INJ_PLAN = null, INJ_BUSY = false;
+
+async function showInject() {
+  if (!CUR) return toast('请先选一篇素材', true);
+  if (INJ_BUSY) return;
+  try {
+    const p = await api('inject-plan?id=' + encodeURIComponent(CUR.id));
+    INJ_PLAN = p;
+    $('inj-sum').innerHTML = '《' + esc(p.title) + '》 · 正文图 ' + p.body_images.length +
+      ' 张 · 封面 ' + (p.cover.state === 'ready' ? '✅ 已就绪' : '❌ 不可用');
+    $('inj-list').innerHTML = p.body_images.length ? p.body_images.map(x =>
+      '<div class="dlg-row"><span class="lbl">正文图 ' + (x.index + 1) + '</span>' +
+      '<span class="pth">' + esc(x.url.slice(0, 82)) + '…</span>' +
+      '<span class="sz">' + (x.state === 'ready' ? '✅ 已上传' : '❌ ' + esc(x.state)) + '</span></div>'
+    ).join('') + '<div class="dlg-row"><span class="lbl">封面</span><span class="pth">' +
+      esc(p.cover.url.slice(0, 82)) + '…</span><span class="sz">' +
+      (p.cover.state === 'ready' ? '✅ 已上传' : '❌') + '</span></div>'
+      : '<div class="dlg-row"><span class="pth">这篇素材没有图片</span></div>';
+    let warn = p.warnings.map(w => '<div class="dlg-warn">⚠️ ' + esc(w) + '</div>').join('');
+    const pr = await api('probe').catch(() => ({ok: false}));
+    if (!pr.ok) warn += '<div class="dlg-warn">⚠️ 探针未连接 / 未登录，请先启动 MpLoginProbe 并登录公众号后台。</div>';
+    $('inj-warn').innerHTML = warn;
+    $('inj-go').disabled = !p.ready || !pr.ok;
+    $('injmask').classList.add('on');
+  } catch (e) { toast('读取图片清单失败：' + e.message, true); }
+}
+
+function hideInject() { $('injmask').classList.remove('on'); INJ_PLAN = null; }
+
+async function doInject() {
+  if (!INJ_PLAN || INJ_BUSY) return;
+  if (!confirm('将给公众号草稿补上正文图片和封面，并点「保存为草稿」。\n不会改正文文字、不会点发表/群发。继续？')) return;
+  if (DIRTY && !(await save(true))) return;
+  INJ_BUSY = true;
+  $('inj-go').disabled = true; $('inj-go').textContent = '正在补齐…';
+  toast('正在写入公众号草稿，请稍候…');
+  try {
+    const r = await api('inject', 'POST', {
+      id: INJ_PLAN.id, confirm: 'INJECT', replace_cover: $('inj-replace').checked
+    });
+    const v = r.verify || {};
+    log('[补图/封面] ' + INJ_PLAN.id + '\n' + (r.steps || []).join(' → ') +
+        '\n复核：正文图 ' + (v.body_imgs || 0) + ' 张，封面 ' + (v.cover ? '已设置' : '无'));
+    toast('✅ 已补齐：正文图 ' + (v.body_imgs || 0) + ' 张、封面 ' +
+          (String(v.cover || '').includes('mmbiz.qpic.cn') ? '✅' : '—'));
+    hideInject();
+  } catch (e) { toast('补齐失败：' + e.message, true); }
+  finally {
+    INJ_BUSY = false;
+    $('inj-go').disabled = false; $('inj-go').textContent = '补齐并保存草稿';
+  }
+}
+
+// ── 改已经存进公众号草稿箱的文章 ─────────────────────────────────
+let REV_PLAN = null, REV_BUSY = false, REV_PROBE_OK = false;
+
+function revDraftOptions(items) {
+  return (items || []).map(d => '<option value="' + esc(d.appmsgid) + '">' +
+    esc(d.title || '') + '</option>').join('');
+}
+
+function checkRevConfirm() {
+  const blocked = REV_PLAN && REV_PLAN.has_blocker && !$('rev-force').checked;
+  const mediaOk = !REV_PLAN || !REV_PLAN.media_blocked || $('rev-nomedia').checked;
+  const ok = !!(REV_PLAN && REV_PROBE_OK && !REV_BUSY && !blocked && mediaOk);
+  $('rev-go').disabled = !ok;
+}
+
+async function showRevise() {
+  if (!CUR) return toast('请先选一篇素材', true);
+  if (REV_BUSY) return;
+  try {
+    const p = await api('revise-plan?id=' + encodeURIComponent(CUR.id));
+    REV_PLAN = p;
+    $('rev-sum').innerHTML = '《' + esc(p.title) + '》 · 台账 ' + esc(p.status || 'new') +
+      ' · 目标 ' + (p.appmsgid ? esc(p.appmsgid) + '（' + esc(p.appmsgid_source) + '）'
+                              : '执行时按标题自动查找');
+    $('rev-appid').value = p.appmsgid || '';
+    $('rev-drafts').innerHTML = revDraftOptions(p.drafts);
+    let html = p.fields.map(f => '<div class="dlg-row"><span class="lbl">' +
+      esc(f.label) + '</span><span class="pth">' + esc(f.value) + '</span></div>').join('');
+    if ((p.drafts || []).length) {
+      html += '<div class="dlg-row"><span class="lbl">后台草稿</span><span class="pth">' +
+        p.drafts.map(d => esc(d.appmsgid) + ' ' + esc(d.title)).join(' ｜ ') + '</span></div>';
+    }
+    $('rev-list').innerHTML = html;
+    let warn = (p.warnings || []).map(w => '<div class="dlg-warn">⚠️ ' + esc(w) + '</div>').join('');
+    if (p.media_blocked) warn += '<div class="dlg-warn">⚠️ 正文里有未上传的本地图：请先点「上传图片」，或勾选「只改文字，保留后台原有图片和封面」。</div>';
+    const pr = await api('probe').catch(() => ({ok: false}));
+    REV_PROBE_OK = !!pr.ok;
+    if (!REV_PROBE_OK) warn += '<div class="dlg-warn">⚠️ 探针未连接 / 未登录，请先启动 MpLoginProbe 并登录公众号后台。</div>';
+    $('rev-warn').innerHTML = warn;
+    $('rev-force-wrap').style.display = p.has_blocker ? '' : 'none';
+    $('rev-force').checked = false;
+    $('rev-replace').checked = false;
+    $('rev-nomedia').checked = false;
+    $('revmask').classList.add('on');
+    checkRevConfirm();
+  } catch (e) { toast('读取改稿计划失败：' + e.message, true); }
+}
+
+function hideRevise() {
+  if (REV_BUSY) return;
+  $('revmask').classList.remove('on');
+  REV_PLAN = null;
+}
+
+async function scanDrafts() {
+  if (REV_BUSY) return;
+  try {
+    toast('正在读取后台草稿箱…');
+    const r = await api('drafts-scan', 'POST', {});
+    const items = r.items || [];
+    if (REV_PLAN) REV_PLAN.drafts = items;
+    $('rev-drafts').innerHTML = revDraftOptions(items);
+    if (!REV_PLAN.appmsgid && !$('rev-appid').value) {
+      const hit = items.find(d => (d.title || '').trim() === (REV_PLAN.title || '').trim());
+      if (hit) $('rev-appid').value = hit.appmsgid;
+    }
+    log('[读取草稿箱] 共 ' + items.length + ' 篇\n' +
+        items.map(d => d.appmsgid + '  ' + d.title).join('\n') +
+        ((r.linked || []).length ? '\n补登记：' +
+          r.linked.map(x => x.id + '→' + x.appmsgid).join(', ') : ''));
+    toast('读到 ' + items.length + ' 篇后台草稿');
+    refreshAll();
+  } catch (e) { toast('读取草稿箱失败：' + e.message, true); }
+}
+
+async function doRevise() {
+  if (!REV_PLAN || REV_BUSY) return;
+  const appid = $('rev-appid').value.trim();
+  if (appid && !/^\d+$/.test(appid)) return toast('appmsgid 必须是数字', true);
+  if (DIRTY && !(await save(true))) return;
+  REV_BUSY = true;
+  $('rev-go').disabled = true; $('rev-go').textContent = '正在更新…';
+  toast('正在覆盖更新公众号草稿，请稍候…');
+  try {
+    const r = await api('revise', 'POST', {
+      id: REV_PLAN.id, confirm: 'UPDATE', appmsgid: appid || null,
+      replace_cover: $('rev-replace').checked,
+      no_media: $('rev-nomedia').checked,
+      force: $('rev-force').checked
+    });
+    const b = r.before || {}, a = r.after || {};
+    log('[更新草稿] ' + REV_PLAN.id + ' → ' + (r.appmsgid || '—') + '\n' +
+        (r.steps || []).join(' → ') +
+        '\n改前：' + (b.title || '—') + ' / 正文 ' + (b.body_len || 0) + ' / 图 ' + (b.body_imgs || 0) +
+        '\n改后：' + (a.title || '—') + ' / 正文 ' + (a.body_len || 0) + ' / 图 ' + (a.body_imgs || 0));
+    toast(r.message || '✅ 草稿已更新');
+    REV_BUSY = false;
+    hideRevise();
+    await refreshAll();
+  } catch (e) { toast('更新失败：' + e.message, true); }
+  finally {
+    REV_BUSY = false;
+    $('rev-go').textContent = '覆盖更新草稿';
+    checkRevConfirm();
+  }
+}
+
+async function doUploadMedia() {
+  if (!UP_PLAN || UP_BUSY) return;
+  const mid = UP_PLAN.id;
+  const files = Array.from(document.querySelectorAll('#up-list .up-chk:checked')).map(e => e.value);
+  if (!files.length) return;
+  if (!confirm('将把 ' + files.length + ' 张图片真实上传到公众号官方素材库。\n上传可在后台删除，但不会自动撤回。继续？')) return;
+  if (DIRTY && !(await save(true))) return;
+  UP_BUSY = true; upSelected();
+  try {
+    const r = await api('upload-media', 'POST',
+      {id: mid, files: files, confirm: 'UPLOAD', writeback: true});
+    const lines = (r.uploaded || []).map(x => '✅ ' + x.name + '  ' + x.url);
+    (r.failed || []).forEach(x => lines.push('❌ ' + x.name + '  ' + x.error));
+    if ((r.writeback || []).length) lines.push('回填 meta.json: ' + r.writeback.join(', '));
+    log('[上传素材库]\n' + (lines.join('\n') || r.message));
+    hideUpload();
+    await refreshAll();
+    DIRTY = false;
+    await openMat(mid);
+    toast(r.message || '上传完成');
+  } catch (e) { toast('上传失败：' + e.message, true); }
+  finally {
+    UP_BUSY = false;
+    if (UP_PLAN) upSelected();
+    else { $('up-go').disabled = true; $('up-go').textContent = '上传 0 张'; }
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+  if (e.key === 'Escape') {
+    if (FS_ON && !$('mask').classList.contains('on')) exitFullEdit();
+    hideNew(); hideDel(); hideTrash(); hideUpload(); hideInject(); hideRevise();
+  }
+});
+
+if ($('pv-proxy')) $('pv-proxy').checked = localStorage.getItem('mpui.preview.proxy') !== '0';
+applyFsLayout();
+refreshAll();
+updateTrashCount();
+</script>
+</body>
+</html>

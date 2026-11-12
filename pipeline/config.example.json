@@ -1,0 +1,55 @@
+{
+  "_说明": "复制成 config.json 后改成自己的素材系统。source.type 支持 folder / json / sqlite / http",
+
+  "source": {
+    "type": "folder",
+    "path": "examples",
+    "recursive": true
+  },
+
+  "_source_sqlite示例": {
+    "type": "sqlite",
+    "path": "C:/path/to/materials.db",
+    "table": "materials",
+    "where": "publish_status = 0",
+    "mapping": {"id": "id", "title": "title", "content": "body_md", "digest": "summary", "cover_url": "cover", "create_time": "created_at"},
+    "id_column": "id",
+    "status_column": "publish_status"
+  },
+
+  "_source_http示例": {
+    "type": "http",
+    "url": "http://127.0.0.1:8080/api/materials?status=pending",
+    "token": "",
+    "token_header": "X-Api-Token",
+    "headers": {},
+    "timeout": 20
+  },
+
+  "compose": {
+    "template": "soft",
+    "cta": "微信/QQ <改成你自己的联系方式>",
+    "image_base_url": ""
+  },
+
+  "delivery": {
+    "mode": "draft_only",
+    "_mode说明": "draft_only = 只自动生成草稿、人工点发布（当前选择 A）；auto_publish = 允许自动群发，需 --confirm I_UNDERSTAND",
+    "cdp": "http://127.0.0.1:8765",
+    "daily_limit": 1,
+    "require_confirm": true
+  },
+
+  "report": null,
+
+  "_report示例": {
+    "type": "http",
+    "url": "http://127.0.0.1:8080/api/materials/status",
+    "method": "PATCH",
+    "token": ""
+  },
+
+  "output": {
+    "dir": "out"
+  }
+}
