@@ -16,15 +16,25 @@ import re
 from datetime import datetime
 
 F = "font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',Arial,sans-serif;"
+
+# ── 配色：必须同时满足「浅色底」和「微信暗色模式」两种场景的对比度 ──
+# 微信的暗色模式会把整篇文章做反色处理，浅灰字 / 亮绿字会直接掉成低对比，
+# 编辑器的「内容结构检测」会报 darkmode-low-contrast 并挡住发布。
+# 规则：正文级文字一律用 L 在 0.10~0.20 之间的颜色（#1a1a1a ~ #6b7280），
+# 品牌绿只用于装饰性色块（左边框、分割线），文字绿一律用深绿 GREEN_TXT。
+GREEN = "#07c160"            # 只做装饰：边框、色块、下划线
+GREEN_TXT = "#0a7a42"        # 绿字统一用它：白底 5.1:1，反色后仍 5:1 以上
+MUTED = "#6b7280"            # 次要文字：白底 4.9:1，替代原来的 #9a9a9a / #a6a6a6
+
 P = ("margin:0 0 18px;padding:0;line-height:1.85;font-size:16px;"
      "color:#3f3f3f;letter-spacing:.3px;text-align:justify;" + F)
-H2 = ("margin:34px 0 16px;padding:0 0 0 12px;border-left:4px solid #07c160;"
+H2 = ("margin:34px 0 16px;padding:0 0 0 12px;border-left:4px solid " + GREEN + ";"
       "font-size:19px;font-weight:700;line-height:1.45;color:#1a1a1a;" + F)
 BOX = ("margin:22px 0;padding:16px 18px;background:#f7f8fa;border-radius:8px;"
        "border:1px solid #eceef1;" + F)
 QUOTE = ("margin:20px 0;padding:12px 16px;background:#fffbe6;"
          "border-left:3px solid #f0c000;color:#6b5b20;line-height:1.8;font-size:15px;" + F)
-CAP = ("margin:-10px 0 22px;text-align:center;font-size:13px;color:#9a9a9a;" + F)
+CAP = ("margin:-10px 0 22px;text-align:center;font-size:13px;color:" + MUTED + ";" + F)
 IMG = "display:block;width:100%;max-width:100%;height:auto;margin:20px auto;border-radius:6px;"
 PENDING = ("display:block;padding:28px 12px;margin:20px 0;text-align:center;"
            "background:#fff4f4;border:1px dashed #f0a0a0;border-radius:8px;"
@@ -40,10 +50,11 @@ TEMPLATES = {
 def _inline(s):
     """行内 markdown：**粗**、`码`、[文字](链接)。"""
     s = html.escape(s or "", quote=False)
-    s = re.sub(r"\*\*(.+?)\*\*", r"<strong style=\"color:#1a1a1a;\">\1</strong>", s)
-    s = re.sub(r"`(.+?)`", r"<code style=\"background:#f2f3f5;padding:2px 5px;border-radius:3px;font-size:14px;\">\1</code>", s)
+    # 注意：raw string 里不要写 \"，否则会输出字面反斜杠，内联样式在浏览器里失效
+    s = re.sub(r"\*\*(.+?)\*\*", r'<strong style="color:#1a1a1a;">\1</strong>', s)
+    s = re.sub(r"`(.+?)`", r'<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-size:14px;">\1</code>', s)
     s = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)",
-               r"<a href=\"\2\" style=\"color:#07c160;text-decoration:none;\">\1</a>", s)
+               r'<a href="\2" style="color:%s;text-decoration:none;">\1</a>' % GREEN_TXT, s)
     return s
 
 
@@ -77,21 +88,58 @@ def _img(m, mimg, idx, checks, base_url, cap=""):
     return out, True
 
 
+def _table_html(rows):
+    """把 Markdown 表格行（已拆好 cells）渲染成公众号可用的带样式 <table>。"""
+    if not rows:
+        return ""
+    ncol = max(len(r) for r in rows)
+    th = '<th style="border:1px solid #e5e6eb;padding:8px 10px;text-align:left;' \
+         'background:#f7f8fa;font-weight:700;color:#1a1a1a;">%s</th>'
+    td = '<td style="border:1px solid #e5e6eb;padding:8px 10px;color:#3f3f3f;">%s</td>'
+    body = []
+    for i, r in enumerate(rows):
+        r = r + [""] * (ncol - len(r))
+        tag = th if i == 0 else td
+        body.append("<tr>%s</tr>" % "".join(tag % _inline(c) for c in r))
+    return ('<table style="border-collapse:collapse;width:100%%;margin:0 0 18px;'
+            'font-size:15px;line-height:1.7;">%s</table>' % "".join(body))
+
+
 def md_to_html(body, material, cfg, checks):
     imgs = material.images or []
     base_url = cfg.get("image_base_url", "") or ""
     out, para, consumed = [], [], 0
+    table_rows = []
 
-    def flush():
+    def flush_table():
+        if table_rows:
+            out.append(_table_html(list(table_rows)))
+            table_rows.clear()
+
+    def flush_para():
         if para:
             out.append('<p style="%s">%s</p>' % (P, _inline(" ".join(para))))
             para.clear()
+
+    def flush():
+        flush_table()
+        flush_para()
 
     for line in (body or "").splitlines():
         s = line.strip()
         if not s:
             flush()
             continue
+        # Markdown 表格：| a | b | 行；分隔行 |---|---| 跳过
+        mcell = re.fullmatch(r"\|(.+)\|", s)
+        if mcell:
+            flush_para()
+            cells = [c.strip() for c in mcell.group(1).split("|")]
+            if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                continue
+            table_rows.append(cells)
+            continue
+        flush_table()
         im = re.fullmatch(r"!\[([^\]]*)\]\(([^)]+)\)", s)
         ph = re.fullmatch(r"(\{\{IMG:\d+\}\})", s)
         if im or ph:
@@ -115,8 +163,14 @@ def md_to_html(body, material, cfg, checks):
         elif re.match(r"^[-*]\s+", s):
             flush()
             out.append('<p style="margin:0 0 10px;padding-left:18px;line-height:1.8;font-size:16px;color:#3f3f3f;%s">'
-                       '<span style="color:#07c160;font-weight:700;">• </span>%s</p>'
+                       '<span style="color:#0a7a42;font-weight:700;">• </span>%s</p>'
                        % (F, _inline(re.sub(r"^[-*]\s+", "", s))))
+        elif re.match(r"^\d+[.、．]\s*", s):
+            flush()
+            num = re.match(r"^(\d+)[.、．]\s*", s).group(1)
+            out.append('<p style="margin:0 0 10px;padding-left:18px;line-height:1.8;font-size:16px;color:#3f3f3f;%s">'
+                       '<span style="color:#0a7a42;font-weight:700;">%s. </span>%s</p>'
+                       % (F, num, _inline(re.sub(r"^\d+[.、．]\s*", "", s))))
         elif s == "---":
             flush()
             out.append('<p style="margin:28px 0;border-top:1px solid #eceef1;%s"></p>' % F)
@@ -151,26 +205,27 @@ def render(material, cfg):
     if material.tags:
         tags = '<p style="margin:26px 0 0;%s">%s</p>' % (
             CAP, "　".join('<span style="display:inline-block;padding:3px 10px;'
-                          'margin-right:6px;background:#f2f8f4;color:#07c160;'
+                          'margin-right:6px;background:#eaf6ef;color:' + GREEN_TXT + ';'
                           'border-radius:12px;font-size:12px;">#%s</span>'
                           % html.escape(str(t)) for t in material.tags))
 
     cta = ""
     if tpl["cta"]:
-        txt = cfg.get("cta", "") or "{{待填联系方式}}"
-        if "{{待填" in txt:
-            checks.append("❌ 未配置 compose.cta（联系方式）")
-        cta = ('<section style="margin:32px 0 8px;padding:20px;background:#f2f8f4;'
-               'border-radius:10px;text-align:center;%s">'
-               '<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#0a7a42;">'
-               '想了解更多？</p>'
-               '<p style="margin:0;font-size:15px;color:#3f7a58;line-height:1.8;">%s</p>'
-               '</section>' % (F, _inline(txt)))
+        txt = (cfg.get("cta", "") or "").strip()
+        if txt:
+            cta = ('<section style="margin:32px 0 8px;padding:20px;background:#f2f8f4;'
+                   'border-radius:10px;text-align:center;%s">'
+                   '<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#0a7a42;">'
+                   '想了解更多？</p>'
+                   '<p style="margin:0;font-size:15px;color:#3f7a58;line-height:1.8;">%s</p>'
+                   '</section>' % (F, _inline(txt)))
 
-    footer = ('<p style="margin:30px 0 0;padding-top:16px;border-top:1px solid #eceef1;'
-              'font-size:12px;color:#a6a6a6;text-align:center;%s">'
-              '本文由素材库自动排版生成 · %s</p>'
-              % (F, datetime.now().strftime("%Y-%m-%d")))
+    footer = ""
+    if cfg.get("footer"):                # 默认不带页脚，config 显式开启才输出
+        footer = ('<p style="margin:30px 0 0;padding-top:16px;border-top:1px solid #eceef1;'
+                  'font-size:12px;color:%s;text-align:center;%s">'
+                  '本文由素材库自动排版生成 · %s</p>'
+                  % (MUTED, F, datetime.now().strftime("%Y-%m-%d")))
 
     fragment = "\n".join(x for x in (lead, body, tags, cta, footer) if x)
     preview = _wrap_preview(material, fragment, tpl["label"], checks)

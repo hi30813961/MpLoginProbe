@@ -639,6 +639,18 @@ class Handler(BaseHTTPRequestHandler):
                                       ctype="text/html; charset=utf-8")
             if p == "/favicon.ico":
                 return send_bytes(self, b"", "image/x-icon", 204)
+            if p.startswith("/vendor/"):
+                rel = os.path.normpath(p[len("/vendor/"):])
+                if not rel or rel.startswith(("..", "/")) or os.path.isabs(rel):
+                    return send_json(self, {"ok": False, "error": "非法路径"}, 400)
+                fp = os.path.join(UI_DIR, "vendor", rel)
+                if not os.path.isfile(fp):
+                    return send_json(self, {"ok": False, "error": "Not found"}, 404)
+                ctype = mimetypes.guess_type(fp)[0] or "application/octet-stream"
+                if fp.endswith(".js"):
+                    ctype = "application/javascript"
+                with open(fp, "rb") as f:
+                    return send_bytes(self, f.read(), ctype, cache="public, max-age=3600")
             if p.startswith("/media/"):
                 token = p[len("/media/"):]
                 with MEDIA_LOCK:

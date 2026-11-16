@@ -5,10 +5,17 @@
 
 2026-11 版编辑器的硬约束（实测，别再踩）：
   * 正文是 ProseMirror `#ueditor_0 .ProseMirror`（mock-iframe，仍在主文档）。
-  * 只有 CDP `Input.insertText`（/text）能真正更新 PM 内部 state 并被保存。
-    合成 ClipboardEvent(paste)、`document.execCommand('insertHTML')`、
-    CF_HTML 剪贴板 + CDP Ctrl+V —— 都只改 DOM，保存时 PM 按 state 序列化，
-    正文会被打回原样。所以「带样式正文」只能由真人在编辑器里 Ctrl+V。
+  * 带样式正文的三条可用通道（2026-11-15 复测更新）：
+    1) 合成 ClipboardEvent('paste') + DataTransfer 塞 text/html —— ✅ 推荐，
+       走 PM 的 paste handler 进 state，保存后重载不丢。见 tools/paste_html.py。
+       注意：必须用 DataTransfer 构造 clipboardData；裸 dispatchEvent 不带
+       clipboardData 时 handler 读不到内容，等于没粘。
+    2) CDP Input.insertText —— 只能写纯文本（逐段 + Enter 分段）。
+    3) execCommand('insertHTML') / 裸 DOM 改写 —— 只改 DOM 不进 state，
+       保存时按 state 序列化会被打回原样，禁止用于正文。
+    系统剪贴板路径（CF_HTML + Ctrl+V，无论 CDP 还是 SendInput）受窗口
+    前台/最小化状态摆布：WebView2 失焦或最小化时 Chromium 拒绝读剪贴板，
+    静默失败，不要依赖。
   * 标题同理，用 CDP 点击 + Ctrl+A + insertText；合成 paste 会追加成两遍。
   * 作者 / 摘要是普通表单，用原生 setter + input/change 事件即可。
 
@@ -237,20 +244,75 @@ def replace_title_via_keys(cdp, title):
     return read_editor(cdp)
 
 
+def fragment_to_paragraphs(fragment):
+    """把排版 fragment 拆成纯文本段落数组（2026-11-15 新增）。
+
+    旧逻辑把整个 fragment 的空白压成单空格，正文全挤成一大段，
+    「分段 / 排版」全丢。现在按块级标签断行：
+      * <p>/<h1-6>/<blockquote>/<li>/<section>/<div> 结束处断行，<br> 断行；
+      * <table> 的每个 <tr> 转成一行，单元格用「 ｜ 」连接（|---| 分隔行丢弃）。
+    纯文本视觉增强（2026-11-15 二次优化，无法带样式的补救）：
+      * 小节标题加「▍」前缀（公众号常见的标题装饰符）；
+      * 引用块加「❝ 」前缀；
+      * 分隔线 <p border-top> 转成字符线「· · · · · ·」。
+    """
+    t = fragment
+    # 纯文本装饰：标题 / 引用 / 分隔线 / 图注标记
+    t = re.sub(r"<h[12][^>]*>", lambda m: m.group(0) + "▍", t)
+    t = re.sub(r"<blockquote[^>]*>", lambda m: m.group(0) + "❝ ", t)
+    t = re.sub(r'(<p style="[^"]*text-align:\s*center[^"]*">)',
+               lambda m: m.group(1) + "\x00", t)
+    t = re.sub(r'<p style="[^"]*border-top[^"]*"[^>]*>\s*</p>',
+               "\n· · · · · ·\n", t)
+    # 表格行 → 一行文本
+    def _tr(m):
+        tds = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", m.group(1), re.S)
+        cells = [re.sub(r"<[^>]+>", "", x).strip() for x in tds]
+        cells = [c for c in cells if c]
+        if not cells or all(re.fullmatch(r":?-{2,}:?", c) for c in cells):
+            return ""
+        return "\n" + " ｜ ".join(cells)
+    t = re.sub(r"<tr[^>]*>(.*?)</tr>", _tr, t, flags=re.S)
+    t = re.sub(r"<br\s*/?>", "\n", t)
+    t = re.sub(r"</(p|h[1-6]|blockquote|li|section|div)>", "\n", t)
+    t = re.sub(r"<[^>]+>", "", t)
+    t = html.unescape(t)
+    paras = [ln.strip() for ln in t.split("\n") if ln.strip()]
+    # 首行缩进两格（2026-11-15）：只缩普通正文段；
+    # 标题 ▍ / 引用 ❝ / 列表 • / 有序列表 / 表格行 ｜ / 分隔线 · 不缩；
+    # 图注段（compose CAP 是 text-align:center，已在块头打了 \x00 标记）不缩
+    out = []
+    for p in paras:
+        if p.startswith("\x00"):
+            out.append(p.lstrip("\x00"))
+        elif (p.startswith(("▍", "❝", "•", "· · ·"))
+                or re.match(r"^\d+[.、．]\s", p)
+                or " ｜ " in p):
+            out.append(p)
+        else:
+            out.append("　　" + p)
+    return out
+
+
 def fill(cdp, fragment, title, author="", digest="", dry_run=False,
          min_body_len=200):
     """填标题 / 正文 / 作者 / 摘要。不点保存，不群发。
 
-    正文只写「去标签后的纯文本」——这是唯一能进 PM state 的通道。
+    正文逐段写入（2026-11-15 改造）：先按块级标签拆段，再
+    cdp.text(段落) + Enter 键分段——Enter 是真实键盘事件，PM 会正确
+    拆成 <section> 段落（已实测）；合成 \n 会被 HTML 空白折叠吃掉。
+    标题段（h2）前后额外空一行，视觉上更分明。
     带内联样式的 HTML 由 `copy` 命令放进剪贴板，供真人在编辑器里 Ctrl+V
     覆盖，那一步才会保留完整排版。
     """
-    plain = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", fragment))).strip()
+    paras = fragment_to_paragraphs(fragment)
+    plain_len = sum(len(p) for p in paras)
     plan = {
         "editor_url": str(cdp.status().get("url", "")),
         "title": title, "author": author, "digest": digest[:40],
-        "html_len": len(fragment), "plain_len": len(plain),
-        "steps": ["预检选择器", "JS 聚焦正文 + 全选", "CDP insertText 写正文",
+        "html_len": len(fragment), "plain_len": plain_len,
+        "paras": len(paras),
+        "steps": ["预检选择器", "JS 聚焦正文 + 全选", "逐段 CDP insertText + Enter 分段",
                   "CDP 键盘写标题", "填作者 / 摘要", "读回校验"],
     }
     if dry_run:
@@ -264,7 +326,16 @@ def fill(cdp, fragment, title, author="", digest="", dry_run=False,
     f = ev(cdp, FOCUS_BODY_JS)
     if not f or not f.get("sameNode"):
         raise CdpError("正文编辑器没能获得焦点：%s" % f)
-    cdp.text(plain)                       # 唯一能进 PM state 的写入
+    cdp.key("Backspace")                  # FOCUS_BODY_JS 已全选，清空旧正文
+    time.sleep(0.3)
+    for i, p in enumerate(paras):         # 逐段写入：text + Enter 真实分段
+        # 2026-11-15 三次调整：统一单 Enter（双 Enter 会产生空段落，
+        # 用户反馈段落间距太大）；段间距交给微信默认 margin
+        if i:
+            cdp.key("Enter")
+            time.sleep(0.1)
+        cdp.text(p)
+        time.sleep(0.1)
     time.sleep(0.4)
 
     kb = replace_title_via_keys(cdp, title)
@@ -381,9 +452,30 @@ def save_draft(cdp, dry_run=False):
     if dry_run:
         return {"ok": True, "dry_run": True,
                 "plan": "点「保存为草稿」（button，需滚动到可见区）"}
-    hit = click_by_text(cdp, ["保存为草稿", "保存草稿", "存草稿"],
-                        forbid=("发表", "群发", "发布", "推送", "确认"))
-    time.sleep(2)
+    # 2026-11-15 修复：探针视口只有 ~438x473，而保存按钮在 x≈469——
+    # 一半在视口外，坐标点击无效（之前"报成功实际没保存"的根因）。
+    # 保存前先放大视口（同 media_inject.VIEWPORT），点完还原。
+    cdp.cdp("Emulation.setDeviceMetricsOverride",
+            {"width": 1400, "height": 1400, "deviceScaleFactor": 1,
+             "mobile": False})
+    time.sleep(0.6)
+    try:
+        hit = None
+        for attempt in range(3):          # 最多点 3 次，直到看到保存成功反馈
+            hit = click_by_text(cdp, ["保存为草稿", "保存草稿", "存草稿"],
+                                forbid=("发表", "群发", "发布", "推送", "确认"))
+            time.sleep(2.5)
+            ok = ev(cdp, r"""(function(){
+              var t=document.body.innerText||'';
+              if(/保存成功|已保存/.test(t)) return true;
+              // 编辑页 URL 变成 list / 草稿箱也算成功
+              return /appmsgpublish|appmsg\?t=media\/appmsg_list/.test(location.href);
+            })()""")
+            if ok:
+                break
+    finally:
+        cdp.cdp("Emulation.clearDeviceMetricsOverride")
+        time.sleep(0.3)
     return {"ok": True, "clicked": hit, "url": str(cdp.status().get("url", ""))}
 
 

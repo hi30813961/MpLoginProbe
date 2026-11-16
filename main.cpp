@@ -398,6 +398,75 @@ public:                                                                         
 private:                                                                          \
     LONG m_ref = 1;
 
+// ── WebView2 环境选项：压内存用 ─────────────────────────────────────────────
+// loader 没注册 coclass，这里自己实现 ICoreWebView2EnvironmentOptions：
+//   TargetCompatibleBrowserVersion 取运行时实际版本（能力全开，QI 到几层用几层）
+//   --js-flags=--max-old-space-size=512   每个渲染进程 V8 堆上限 512MB
+//   --disk-cache-size=33554432            HTTP 磁盘缓存压到 32MB
+static HRESULT STDMETHODCALLTYPE CopyLpwstr(LPCWSTR src, LPWSTR* dst)
+{
+    if (!dst) return E_POINTER;
+    *dst = nullptr;
+    if (!src) return S_OK;
+    const size_t n = (wcslen(src) + 1) * sizeof(WCHAR);
+    LPWSTR p = static_cast<LPWSTR>(CoTaskMemAlloc(n));
+    if (!p) return E_OUTOFMEMORY;
+    memcpy(p, src, n);
+    *dst = p;
+    return S_OK;
+}
+
+class EnvOptions : public ICoreWebView2EnvironmentOptions {
+public:
+    EnvOptions(QString args, QString ver) : m_args(std::move(args)), m_ver(std::move(ver)) {}
+    COM_BOILERPLATE(ICoreWebView2EnvironmentOptions)
+
+    HRESULT STDMETHODCALLTYPE get_AdditionalBrowserArguments(LPWSTR* value) override {
+        return CopyLpwstr(reinterpret_cast<LPCWSTR>(m_args.utf16()), value);
+    }
+    HRESULT STDMETHODCALLTYPE put_AdditionalBrowserArguments(LPCWSTR) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE get_Language(LPWSTR* value) override {
+        return CopyLpwstr(L"", value);
+    }
+    HRESULT STDMETHODCALLTYPE put_Language(LPCWSTR) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE get_TargetCompatibleBrowserVersion(LPWSTR* value) override {
+        return CopyLpwstr(reinterpret_cast<LPCWSTR>(m_ver.utf16()), value);
+    }
+    HRESULT STDMETHODCALLTYPE put_TargetCompatibleBrowserVersion(LPCWSTR) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE get_AllowSingleSignOnUsingOSPrimaryAccount(BOOL* value) override {
+        if (value) *value = FALSE;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE put_AllowSingleSignOnUsingOSPrimaryAccount(BOOL) override { return E_NOTIMPL; }
+
+private:
+    QString m_args;
+    QString m_ver;
+};
+
+// 运行时可用版本 → TargetCompatibleBrowserVersion；版本拿不到时给一个保守值，
+// 保证即便 GetAvailableCoreWebView2BrowserVersionString 失败也能创建环境。
+static ICoreWebView2EnvironmentOptions* makeEnvOptions()
+{
+    typedef HRESULT (STDMETHODCALLTYPE* GetBrowserVerFn)(PCWSTR userDataFolder, LPWSTR* version);
+    QString ver = QStringLiteral("1.0.1722.58");   // ICoreWebView2_19 起始版本
+    if (g.loader) {
+        auto gfn = (GetBrowserVerFn)GetProcAddress(
+            g.loader, "GetAvailableCoreWebView2BrowserVersionString");
+        if (gfn) {
+            LPWSTR raw = nullptr;
+            if (SUCCEEDED(gfn(nullptr, &raw)) && raw) {
+                ver = QString::fromWCharArray(raw);
+                CoTaskMemFree(raw);
+            }
+        }
+    }
+    const QString args = QStringLiteral(
+        "--js-flags=--max-old-space-size=512 --disk-cache-size=33554432");
+    logLine(QStringLiteral("[内存] WebView2 参数 ") + args + QStringLiteral("  运行时 ") + ver);
+    return new EnvOptions(args, ver);
+}
+
 class EnvReadyHandler : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
 public:
     HRESULT STDMETHODCALLTYPE Invoke(HRESULT, ICoreWebView2Environment*) override;
@@ -938,7 +1007,7 @@ static void initWebView()
     logLine(QStringLiteral("会话目录 ") + profile);
 
     HRESULT hr = pfn(nullptr, reinterpret_cast<LPCWSTR>(profile.utf16()),
-                     nullptr, new EnvReadyHandler);
+                     makeEnvOptions(), new EnvReadyHandler);
     if (FAILED(hr)) {
         logLine(QStringLiteral("WebView2 环境创建失败 0x") + QString::number((ulong)hr, 16));
         g.state = QStringLiteral("ERROR_ENV"); writeStatus();
@@ -1241,7 +1310,7 @@ static void initAdminWebView()
     const QString profile = baseDir() + QStringLiteral("/MpAdminProfile");
     QDir().mkpath(profile);
     const HRESULT hr = pfn(nullptr, reinterpret_cast<LPCWSTR>(profile.utf16()),
-                           nullptr, new AdminEnvReadyHandler);
+                           makeEnvOptions(), new AdminEnvReadyHandler);
     if (FAILED(hr)) {
         logLine(QStringLiteral("[管理台] WebView2 环境创建失败 0x")
                 + QString::number((ulong)hr, 16));
@@ -1355,7 +1424,7 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     QWidget window;
     window.setWindowTitle(QStringLiteral(
-        "公众号工作台 v5  |  左侧：公众号后台 / CDP 8765   右侧：本地素材库 · 流水线 8766（内嵌 Python 单进程）"));
+        "公众号工作台 v5.1  |  左侧：公众号后台 / CDP 8765   右侧：本地素材库 · 流水线 8766（内嵌 Python 单进程 · 最小化省内存）"));
     // 按屏幕可用区域自适应：窗口比屏幕高时底部按钮会被挤出屏幕，看不见也点不到
     const QRect avail = QApplication::primaryScreen()->availableGeometry();
     window.resize(qMin(1180, int(avail.width()  * 0.92)),
@@ -1420,7 +1489,30 @@ int main(int argc, char** argv)
     QObject::connect(btnQuit, &QPushButton::clicked, &window, &QWidget::close);
 
     auto* timer = new QTimer(&window);
-    QObject::connect(timer, &QTimer::timeout, &window, []() {
+    QObject::connect(timer, &QTimer::timeout, &window, [&window]() {
+        // 省内存：最小化时把两个 WebView2 切到低内存目标（Chromium 回收渲染缓存、
+        // 释放合成器表面），恢复窗口时还原。管理台不可见时本来就 put_IsVisible(FALSE)。
+        static bool memLow = false;
+        const bool nowLow = window.isMinimized();
+        if (nowLow != memLow) {
+            memLow = nowLow;
+            for (ICoreWebView2* w : { g.web, a.web }) {
+                if (!w) continue;
+                ICoreWebView2_19* m19 = nullptr;
+                if (SUCCEEDED(w->QueryInterface(IID_ICoreWebView2_19,
+                                                reinterpret_cast<void**>(&m19))) && m19) {
+                    m19->put_MemoryUsageTargetLevel(memLow
+                        ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                        : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+                    m19->Release();
+                }
+            }
+            if (g.ctrl) g.ctrl->put_IsVisible(memLow ? FALSE : TRUE);
+            if (a.ctrl && a.host && a.host->isVisible())
+                a.ctrl->put_IsVisible(memLow ? FALSE : TRUE);
+            logLine(memLow ? QStringLiteral("[内存] 最小化 → 低内存目标 LOW")
+                           : QStringLiteral("[内存] 恢复 → 内存目标 NORMAL"));
+        }
         if (g.ctrl && g.host) {
             const qreal dpr = g.host->devicePixelRatioF();
             RECT r = { 0, 0, (LONG)(g.host->width() * dpr), (LONG)(g.host->height() * dpr) };

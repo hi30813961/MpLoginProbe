@@ -166,7 +166,13 @@ pre.log{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 .app.fs-mode #side-col{overflow:auto;padding-right:2px}
 .app.fs-mode #box-info{flex:none}
 .app.fs-mode #box-body{flex:1;min-height:0;display:flex;flex-direction:column;margin-bottom:0}
-.app.fs-mode .md{flex:1;min-height:0;height:auto;resize:none}
+#f-body-host{width:100%;min-height:430px;height:auto}
+#f-body-host .tui-editor-defaultUI{border:1px solid var(--line2);border-radius:8px}
+.app.fs-mode #box-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.app.fs-mode #editor .grid{grid-template-rows:minmax(0,1fr)}
+.app.fs-mode #f-body-host{flex:1;min-height:0;height:auto}
+.app.fs-mode #f-body-host .tui-editor-defaultUI{height:100%!important;min-height:0;overflow:hidden}
+.app.fs-mode #f-body-host .tui-editor-defaultUI > .te-editor-section{flex:1;min-height:0;overflow:auto}
 .app.fs-mode.fs-focus #editor .grid{grid-template-columns:1fr}
 .app.fs-mode.fs-focus #editor .grid>#side-col,.app.fs-mode.fs-focus #box-info{display:none}
 .app.fs-mode.fs-split #editor .grid>#side-col{display:none}
@@ -272,10 +278,10 @@ pre.log{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
                   </div>
                 </div>
                 <div class="box" id="box-body">
-                  <h4>正文 Markdown <small>改动会实时反映到「实时预览」</small>
+                  <h4>正文 <small>富媒体编辑 · 所见即所得（右上角可切 Markdown 源码）· 改动实时反映到「实时预览」</small>
                     <button class="mini fs-box-btn" id="fs-box-btn" onclick="toggleFullEdit()" title="把编辑区铺满屏幕（Esc 退出）">⛶ 全屏编辑</button></h4>
-                  <textarea class="md" id="f-body" oninput="dirty()" spellcheck="false"></textarea>
-                  <div class="hint">支持 <b>## 小标题</b> · **加粗** · `代码` · &gt; 引用 · - 列表 · --- 分隔线 · ![图注](0) 引用第 0 张图 · Ctrl+S 保存</div>
+                  <div id="f-body-host"></div>
+                  <div class="hint">支持 <b>小标题 / 加粗 / 列表 / 引用 / 表格 / 图片</b>；直接粘贴或拖入截图会自动存进素材图片库；「![图注](0)」序号引用显示时会自动替换为真实图片，保存时再转回序号 · Ctrl+S 保存</div>
                 </div>
               </div>
               <div id="side-col">
@@ -445,8 +451,88 @@ pre.log{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   </div>
 </div>
 
+<!-- Toast UI Editor v2（本地 vendor，无外网依赖）：所见即所得 + Markdown 双模式 -->
+<link rel="stylesheet" href="/vendor/codemirror.min.css">
+<link rel="stylesheet" href="/vendor/toastui-editor.css">
+<script src="/vendor/codemirror.min.js"></script>
+<script src="/vendor/toastui-editor.min.js"></script>
+<script src="/vendor/i18n/zh-cn.js"></script>
+
 <script>
 let LIST = [], CUR = null, DIRTY = false, FILTER = 'all', TIMER = null, RENDER_SEQ = 0;
+
+/* ===== 富媒体编辑器（Toast UI）：底层仍是 body.md，双模式互转 =====
+   显示时把 ![图注](N) 换成真实图片地址；保存时按 MDREV 映射转回序号。
+   没在映射里的 URL 原样保存（compose 本来就支持直链）。 */
+let MDED = null, MDREV = {}, MDSUPPRESS_UNTIL = 0;
+
+function mdRebuildRev() {
+  MDREV = {};
+  (CUR.images || []).forEach((x, i) => {
+    if (x.url) { MDREV[x.url] = i; MDREV[pvUrl(x.url)] = i; }
+    if (x.path) MDREV[x.path] = i;
+  });
+}
+function mdDisplay(md) {
+  return String(md || '').replace(/!\[([^\]]*)\]\((\d+)\)/g, (m, alt, n) => {
+    const x = (CUR && CUR.images || [])[+n];
+    return (x && x.url) ? '![' + alt + '](' + pvUrl(x.url) + ')' : m;
+  });
+}
+function mdStore(md) {
+  return String(md || '').replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, url) => {
+    const n = MDREV[url];
+    return (n !== undefined) ? '![' + alt + '](' + n + ')' : m;
+  });
+}
+function mdGet() { return MDED ? MDED.getMarkdown() : ''; }
+function mdSet(v) {
+  if (MDED) {
+    MDSUPPRESS_UNTIL = Date.now() + 600;   // setMarkdown 的 change 事件可能异步触发
+    try { MDED.setMarkdown(mdDisplay(v || '')); } finally { setTimeout(() => {}, 0); }
+  }
+}
+function mdFocus() { if (MDED) MDED.focus(); }
+function mdCount() { return (mdGet() || '').length; }
+
+function initEditor() {
+  if (typeof toastui === 'undefined' || !toastui.Editor) {
+    $('f-body-host').innerHTML =
+      '<textarea id="f-body" class="md" oninput="dirty()" spellcheck="false"></textarea>';
+    return;
+  }
+  MDED = new toastui.Editor({
+    el: $('f-body-host'),
+    height: 'auto',
+    initialEditType: 'wysiwyg',
+    previewStyle: 'vertical',
+    usageStatistics: false,
+    language: 'zh-CN',
+    events: { change: () => { if (CUR && Date.now() >= MDSUPPRESS_UNTIL) dirty(); } },
+    hooks: {
+      addImageBlobHook: (blob, cb, mime) => {
+        const ext = ((mime || 'image/png').split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const file = new File([blob], 'paste-' + Date.now() + '.' + ext,
+                              {type: mime || 'image/png'});
+        const fr = new FileReader();
+        fr.onload = async () => {
+          try {
+            const r = await api('upload', 'POST',
+                                {id: CUR.id, name: file.name, data: fr.result});
+            CUR.images.push({path: r.path, url: r.url || '', exists: true});
+            mdRebuildRev();
+            drawImages();
+            dirty();
+            cb(pvUrl(r.url || r.path), file.name);
+            toast('截图已存入素材图片库');
+          } catch (e) { toast('图片上传失败：' + e.message, true); }
+        };
+        fr.onerror = () => toast('图片读取失败', true);
+        fr.readAsDataURL(file);
+      }
+    }
+  });
+}
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -502,7 +588,7 @@ function fsLayout() {
   return FS_LAYOUTS.indexOf(v) >= 0 ? v : 'dual';
 }
 function fsCount() {
-  if ($('fs-count')) $('fs-count').textContent = ($('f-body').value || '').length + ' 字';
+  if ($('fs-count')) $('fs-count').textContent = mdCount() + ' 字';
 }
 function applyFsLayout() {
   const name = fsLayout();
@@ -531,7 +617,7 @@ function enterFullEdit() {
   tab('edit');
   applyFsLayout();
   fsCount();
-  $('f-body').focus();
+  mdFocus();
   toast('已进入全屏编辑 · Esc 退出，Ctrl+S 保存');
 }
 function exitFullEdit() {
@@ -611,7 +697,8 @@ async function openMat(id) {
     $('f-author').value = m.author || '';
     $('f-tags').value = (m.tags || []).join(', ');
     $('f-cover').value = m.cover || '';
-    $('f-body').value = d.body_md || '';
+    mdRebuildRev();
+    mdSet(d.body_md || '');
     $('d-title').textContent = m.title || id;
     $('d-meta').innerHTML = '<span class="st ' + esc((d.state || {}).status || 'new') + '">' +
       esc((d.state || {}).status || 'new') + '</span> &nbsp; ' + esc(id) +
@@ -642,7 +729,7 @@ function collect() {
       source: (CUR.meta || {}).source || CUR.id,
       created_at: (CUR.meta || {}).created_at || ''
     },
-    body_md: $('f-body').value
+    body_md: mdStore(mdGet()).replace(/\n*$/, '\n')
   };
 }
 
@@ -679,6 +766,17 @@ function drawImages() {
 }
 
 function insertImg(i) {
+  const x = (CUR.images || [])[i];
+  if (MDED) {
+    if (x && x.url) {
+      try { MDED.exec('AddImage', {imageUrl: pvUrl(x.url), alt: '图注' + i}); }
+      catch (e) { MDED.insertText('\n![图注](' + i + ')\n'); }
+    } else {
+      MDED.insertText('\n![图注](' + i + ')\n');
+    }
+    dirty();
+    return;
+  }
   const ta = $('f-body'), mark = '\n![图注](' + i + ')\n';
   const p = ta.selectionStart;
   ta.value = ta.value.slice(0, p) + mark + ta.value.slice(ta.selectionEnd);
@@ -1251,6 +1349,7 @@ document.addEventListener('keydown', e => {
 
 if ($('pv-proxy')) $('pv-proxy').checked = localStorage.getItem('mpui.preview.proxy') !== '0';
 applyFsLayout();
+initEditor();
 refreshAll();
 updateTrashCount();
 </script>
