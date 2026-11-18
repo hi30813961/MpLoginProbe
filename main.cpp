@@ -118,8 +118,10 @@ struct AdminCtx {
     ICoreWebView2Environment* env  = nullptr;
     ICoreWebView2Controller*  ctrl = nullptr;
     ICoreWebView2*            web  = nullptr;
-    bool      ready      = false;
-    bool      wide       = false;
+    bool      ready       = false;
+    bool      initializing = false;  // 管理台 WebView 正在异步创建
+    int       gen         = 0;       // 收起时 +1，作废尚未回来的旧回调
+    bool      wide        = false;
     QProcess* proc       = nullptr;   // 非空 = 这个进程是我们自己拉起的，退出时才回收
     int       waitTicks  = 0;
     QStringList pyCandidates;
@@ -401,8 +403,12 @@ private:                                                                        
 // ── WebView2 环境选项：压内存用 ─────────────────────────────────────────────
 // loader 没注册 coclass，这里自己实现 ICoreWebView2EnvironmentOptions：
 //   TargetCompatibleBrowserVersion 取运行时实际版本（能力全开，QI 到几层用几层）
-//   --js-flags=--max-old-space-size=512   每个渲染进程 V8 堆上限 512MB
+//   --js-flags=--max-old-space-size=512   每个渲染进程 V8 堆上限 512MB（256 实测只省 3MB，回退避免 GC 压力）
 //   --disk-cache-size=33554432            HTTP 磁盘缓存压到 32MB
+//   --disable-site-isolation-trials       少拆站点隔离渲染进程
+//   --renderer-process-limit=1            渲染进程上限压到 1
+//   --disable-gpu --in-process-gpu        关硬件加速并把 GPU 折进 browser 进程
+//   --disable-background-networking 等    关掉 Edge 后台服务/自动填充/智能防护
 static HRESULT STDMETHODCALLTYPE CopyLpwstr(LPCWSTR src, LPWSTR* dst)
 {
     if (!dst) return E_POINTER;
@@ -462,7 +468,13 @@ static ICoreWebView2EnvironmentOptions* makeEnvOptions()
         }
     }
     const QString args = QStringLiteral(
-        "--js-flags=--max-old-space-size=512 --disk-cache-size=33554432");
+        "--js-flags=--max-old-space-size=512 --disk-cache-size=33554432 "
+        "--disable-site-isolation-trials --renderer-process-limit=1 "
+        "--disable-gpu --in-process-gpu "
+        "--disable-background-networking --disable-extensions --disable-sync "
+        "--disable-component-update "
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,"
+        "msEdgeAutofill,msEdgeShopping,msEdgeWallet,site-per-process,IsolateOrigins");
     logLine(QStringLiteral("[内存] WebView2 参数 ") + args + QStringLiteral("  运行时 ") + ver);
     return new EnvOptions(args, ver);
 }
@@ -482,14 +494,20 @@ public:
 // 管理台专用的两套回调：不碰 g.*，不注入 hook，不写 nav_history / events.log
 class AdminEnvReadyHandler : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
 public:
+    explicit AdminEnvReadyHandler(int g) : gen(g) {}
     HRESULT STDMETHODCALLTYPE Invoke(HRESULT, ICoreWebView2Environment*) override;
     COM_BOILERPLATE(ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler)
+private:
+    int gen;   // 与 a.gen 不符说明面板已收起，旧回调直接丢弃
 };
 
 class AdminCtrlReadyHandler : public ICoreWebView2CreateCoreWebView2ControllerCompletedHandler {
 public:
+    explicit AdminCtrlReadyHandler(int g) : gen(g) {}
     HRESULT STDMETHODCALLTYPE Invoke(HRESULT, ICoreWebView2Controller*) override;
     COM_BOILERPLATE(ICoreWebView2CreateCoreWebView2ControllerCompletedHandler)
+private:
+    int gen;
 };
 
 static void ensureAdminService();
@@ -1284,7 +1302,7 @@ static void waitAdminReady()
 
 static void ensureAdminService()
 {
-    if (!a.web) return;
+    // 8766 服务独立于 WebView：CLI / 流水线不依赖右侧面板是否打开。
     if (adminPortOpen()) {
         logLine(QStringLiteral("[管理台] 检测到 8766 已有服务，直接复用（不重复启动）"));
         a.embedded = false;
@@ -1296,13 +1314,19 @@ static void ensureAdminService()
 
 static void initAdminWebView()
 {
+    if (a.ready || a.initializing) return;
+    a.initializing = true;
+    const int myGen = ++a.gen;   // 收起会让 gen 变化，旧回调自动作废
+
     if (!g.loader) {
+        a.initializing = false;
         setAdminStatus(QStringLiteral("WebView2Loader.dll 未加载，管理台不可用"));
         return;
     }
     auto pfn = (CreateWebViewEnvFn)GetProcAddress(
         g.loader, "CreateCoreWebView2EnvironmentWithOptions");
     if (!pfn) {
+        a.initializing = false;
         setAdminStatus(QStringLiteral("WebView2 入口函数缺失，管理台不可用"));
         return;
     }
@@ -1310,37 +1334,74 @@ static void initAdminWebView()
     const QString profile = baseDir() + QStringLiteral("/MpAdminProfile");
     QDir().mkpath(profile);
     const HRESULT hr = pfn(nullptr, reinterpret_cast<LPCWSTR>(profile.utf16()),
-                           makeEnvOptions(), new AdminEnvReadyHandler);
+                           makeEnvOptions(), new AdminEnvReadyHandler(myGen));
     if (FAILED(hr)) {
+        a.initializing = false;
         logLine(QStringLiteral("[管理台] WebView2 环境创建失败 0x")
                 + QString::number((ulong)hr, 16));
         setAdminStatus(QStringLiteral("WebView2 环境不可用"));
     }
 }
 
+// 收起管理台时彻底释放第二个 WebView2（约 300MB 进程树），下次点开再按需重建。
+// 8766 内嵌服务不动——CLI / 流水线仍可脱离面板使用。
+static void shutdownAdminWebView()
+{
+    if (!a.web && !a.ctrl && !a.env && !a.initializing) return;
+    ++a.gen;                 // 作废所有尚未回来的异步回调
+    a.initializing = false;
+    a.ready = false;
+    if (a.ctrl) { a.ctrl->Close(); a.ctrl->Release(); a.ctrl = nullptr; }
+    if (a.web)  { a.web->Release();  a.web  = nullptr; }
+    if (a.env)  { a.env->Release();  a.env  = nullptr; }
+    setAdminStatus(QStringLiteral("本地管理台已收起 · WebView 已释放（省内存）"));
+    logLine(QStringLiteral("[内存] 管理台已收起 → 释放第二个 WebView2"));
+}
+
 HRESULT AdminEnvReadyHandler::Invoke(HRESULT result, ICoreWebView2Environment* env)
 {
+    if (gen != a.gen || !a.initializing) {
+        logLine(QStringLiteral("[管理台] 环境回调已过期，丢弃"));
+        return S_OK;
+    }
     if (FAILED(result) || !env) {
-        logLine(QStringLiteral("[管理台] WebView2 环境回调失败 0x")
-                + QString::number((ulong)result, 16));
+        a.initializing = false;
+        const HRESULT hr = result;
+        QMetaObject::invokeMethod(qApp, [hr]() {
+            logLine(QStringLiteral("[管理台] WebView2 环境回调失败 0x")
+                    + QString::number((ulong)hr, 16));
+            setAdminStatus(QStringLiteral("WebView2 环境不可用"));
+        }, Qt::QueuedConnection);
         return S_OK;
     }
     env->AddRef();
     a.env = env;
-    env->CreateCoreWebView2Controller(a.hwnd, new AdminCtrlReadyHandler);
+    env->CreateCoreWebView2Controller(a.hwnd, new AdminCtrlReadyHandler(gen));
     return S_OK;
 }
 
 HRESULT AdminCtrlReadyHandler::Invoke(HRESULT result, ICoreWebView2Controller* ctrl)
 {
+    if (gen != a.gen || !a.initializing) {
+        logLine(QStringLiteral("[管理台] 控制器回调已过期，丢弃"));
+        return S_OK;
+    }
     if (FAILED(result) || !ctrl) {
-        logLine(QStringLiteral("[管理台] WebView2 控制器创建失败 0x")
-                + QString::number((ulong)result, 16));
+        a.initializing = false;
+        const HRESULT hr = result;
+        QMetaObject::invokeMethod(qApp, [hr]() {
+            logLine(QStringLiteral("[管理台] WebView2 控制器创建失败 0x")
+                    + QString::number((ulong)hr, 16));
+            setAdminStatus(QStringLiteral("WebView2 控制器创建失败"));
+        }, Qt::QueuedConnection);
         return S_OK;
     }
     ctrl->AddRef();
     a.ctrl = ctrl;
-    if (FAILED(ctrl->get_CoreWebView2(&a.web)) || !a.web) return S_OK;
+    if (FAILED(ctrl->get_CoreWebView2(&a.web)) || !a.web) {
+        a.initializing = false;
+        return S_OK;
+    }
     // 管理台页面不注入任何 hook，也不写 nav_history / events.log
     ICoreWebView2Settings* st = nullptr;
     if (SUCCEEDED(a.web->get_Settings(&st)) && st) {
@@ -1348,8 +1409,9 @@ HRESULT AdminCtrlReadyHandler::Invoke(HRESULT result, ICoreWebView2Controller* c
         st->Release();
     }
     a.ready = true;
+    a.initializing = false;
     QMetaObject::invokeMethod(qApp, []() {
-        logLine(QStringLiteral("[管理台] 第二个 WebView2 就绪（独立 profile）"));
+        logLine(QStringLiteral("[管理台] 第二个 WebView2 就绪（独立 profile · 按需加载）"));
         ensureAdminService();
     }, Qt::QueuedConnection);
     return S_OK;
@@ -1368,8 +1430,18 @@ static void toggleAdminPane()
 {
     if (!a.pane) return;
     const bool show = a.pane->isHidden();
-    a.pane->setVisible(show);          // 只隐藏右侧；左侧公众号 WebView2 始终可见
-    if (show) QTimer::singleShot(80, qApp, applyAdminSizes);
+    a.pane->setVisible(show);          // 只动右侧；左侧公众号 WebView2 始终可见
+    if (show) {
+        QTimer::singleShot(80, qApp, applyAdminSizes);
+        if (a.ready) {
+            if (a.ctrl) a.ctrl->put_IsVisible(TRUE);
+        } else {
+            setAdminStatus(QStringLiteral("正在加载本地管理台 WebView…"));
+            initAdminWebView();         // 第一次点开才创建，省掉常驻的那棵进程树
+        }
+    } else {
+        shutdownAdminWebView();         // 收起即释放，不是单纯 hide
+    }
 }
 
 static QWidget* buildAdminPane()
@@ -1379,7 +1451,7 @@ static QWidget* buildAdminPane()
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(4);
 
-    a.status = new QLabel(QStringLiteral("正在启动本地管理台…"));
+    a.status = new QLabel(QStringLiteral("本地管理台按需加载：点右下「本地管理」才创建 WebView（省内存）"));
     a.status->setStyleSheet(QStringLiteral(
         "background:#E8F5E9;color:#1B5E20;padding:6px;font-size:12px;"));
     v->addWidget(a.status);
@@ -1414,7 +1486,7 @@ static QWidget* buildAdminPane()
         QDesktopServices::openUrl(QUrl(QStringLiteral("http://127.0.0.1:8766/")));
     });
     QObject::connect(bHide,   &QPushButton::clicked, pane, []() {
-        if (a.pane) a.pane->hide();
+        if (a.pane && !a.pane->isHidden()) toggleAdminPane();
     });
     return pane;
 }
@@ -1424,7 +1496,7 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     QWidget window;
     window.setWindowTitle(QStringLiteral(
-        "公众号工作台 v5.1  |  左侧：公众号后台 / CDP 8765   右侧：本地素材库 · 流水线 8766（内嵌 Python 单进程 · 最小化省内存）"));
+        "公众号工作台 v5.2  |  左侧：公众号后台 / CDP 8765   右侧管理台按需加载（点右下「本地管理」，收起即释放 WebView 省内存）"));
     // 按屏幕可用区域自适应：窗口比屏幕高时底部按钮会被挤出屏幕，看不见也点不到
     const QRect avail = QApplication::primaryScreen()->availableGeometry();
     window.resize(qMin(1180, int(avail.width()  * 0.92)),
@@ -1434,7 +1506,7 @@ int main(int argc, char** argv)
     auto* root = new QVBoxLayout(&window);
     auto* head = new QLabel(QStringLiteral(
         "左侧公众号后台只做只读旁观 + CDP 注入；右侧管理台只生成/保存草稿，不群发、不发表。"
-        "两个 WebView2 互不干扰；管理台由本进程内嵌的 CPython 提供，无需另装 Python。"));
+        "管理台 WebView2 按需加载、收起即释放；8766 内嵌 CPython 服务常驻，CLI 流水线不受影响。"));
     head->setStyleSheet(QStringLiteral("color:#555;padding:4px;"));
     root->addWidget(head);
 
@@ -1456,6 +1528,7 @@ int main(int argc, char** argv)
 
     a.pane = buildAdminPane();
     a.split->addWidget(a.pane);
+    a.pane->hide();                    // 默认不创建第二个 WebView2，省约 300MB
     root->addWidget(a.split, 1);
 
     g.log = new QPlainTextEdit;
@@ -1543,10 +1616,9 @@ int main(int argc, char** argv)
         if (g.ctrl) { g.ctrl->Close(); g.ctrl->Release(); }
         if (g.web) g.web->Release();
         if (g.env) g.env->Release();
-        // 管理台：内嵌模式已在上面优雅停止；这里只回收「仅由本程序拉起」的外部 Python
-        if (a.ctrl) { a.ctrl->Close(); a.ctrl->Release(); }
-        if (a.web) a.web->Release();
-        if (a.env) a.env->Release();
+        // 管理台 WebView 若已按需创建，这里统一释放；未创建则空操作
+        shutdownAdminWebView();
+        // 内嵌模式已在上面优雅停止；这里只回收「仅由本程序拉起」的外部 Python
         if (a.proc) {
             a.proc->kill();
             a.proc->waitForFinished(600);   // 外部已有服务时 a.proc 为空，绝不误杀
@@ -1562,6 +1634,7 @@ int main(int argc, char** argv)
     window.showMaximized();   // 贴满可用区域：底部按钮行始终在屏幕内，便于人工/视觉点击
     QTimer::singleShot(200, &window, applyAdminSizes);
     QTimer::singleShot(300, &window, initWebView);
-    QTimer::singleShot(900, &window, initAdminWebView);   // 等 g.loader 加载完成
+    // 8766 内嵌服务照常常驻（CLI 要用），但第二个 WebView2 首次点开才创建
+    QTimer::singleShot(600, &window, []() { ensureAdminService(); });
     return app.exec();
 }

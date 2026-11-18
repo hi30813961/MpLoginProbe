@@ -37,7 +37,9 @@
     "_mode说明": "draft_only = 只自动生成草稿、人工点发布（当前选择 A）；auto_publish = 允许自动群发，需 --confirm I_UNDERSTAND",
     "cdp": "http://127.0.0.1:8765",
     "daily_limit": 1,
-    "require_confirm": true
+    "require_confirm": true,
+    "overlay": false,
+    "_overlay": "false = 不向公众号后台注入任何浮动面板/悬浮按钮；需要恢复时改成 true"
   },
 
   "report": null,

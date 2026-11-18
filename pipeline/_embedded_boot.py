@@ -133,14 +133,17 @@ def main():
     ui_server.api_list(cfg)              # 预热 /media 图片白名单
 
     bridge = None
-    try:
-        import mp_bridge
-        bridge = mp_bridge.start(
-            (cfg.get("delivery") or {}).get("cdp", "http://127.0.0.1:8765"),
-            PORT)
-        print("[管理台] overlay 桥已启用")
-    except Exception as e:
-        print("[管理台] overlay 桥未启用：%s" % e)
+    if (cfg.get("delivery") or {}).get("overlay", False):
+        try:
+            import mp_bridge
+            bridge = mp_bridge.start(
+                (cfg.get("delivery") or {}).get("cdp", "http://127.0.0.1:8765"),
+                PORT)
+            print("[管理台] overlay 桥已启用")
+        except Exception as e:
+            print("[管理台] overlay 桥未启用：%s" % e)
+    else:
+        print("[管理台] overlay 桥已关闭（不向公众号后台注入浮动面板）")
 
     from http.server import ThreadingHTTPServer
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), ui_server.Handler)

@@ -722,13 +722,16 @@ def serve(port=8766):
     if not os.path.isfile(os.path.join(UI_DIR, "index.html")):
         raise SystemExit("❌ 缺少界面文件：%s" % os.path.join(UI_DIR, "index.html"))
     api_list(cfg)                      # 预热图片白名单
-    try:
-        import mp_bridge
-        cdp_url = (cfg.get("delivery") or {}).get("cdp", "http://127.0.0.1:8765")
-        mp_bridge.start(cdp_url, port)
-        print("公众号后台增强面板： 已启用（%s）" % cdp_url)
-    except Exception as e:
-        print("公众号后台增强面板： 未启用（%s）" % e)
+    if (cfg.get("delivery") or {}).get("overlay", False):
+        try:
+            import mp_bridge
+            cdp_url = (cfg.get("delivery") or {}).get("cdp", "http://127.0.0.1:8765")
+            mp_bridge.start(cdp_url, port)
+            print("公众号后台增强面板： 已启用（%s）" % cdp_url)
+        except Exception as e:
+            print("公众号后台增强面板： 未启用（%s）" % e)
+    else:
+        print("公众号后台增强面板： 已关闭（不注入浮动面板）")
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print("素材库 UI 已启动： http://127.0.0.1:%d" % port)
     print("素材目录： %s" % root_dir(cfg))
